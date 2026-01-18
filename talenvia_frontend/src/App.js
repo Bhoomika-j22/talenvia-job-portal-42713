@@ -23,15 +23,65 @@ import SearchResultsPage from "./pages/SearchResultsPage";
  * - Uses existing REACT_APP_* env vars via Settings page display
  */
 
+const DESKTOP_BREAKPOINT_PX = 860;
+
 function Shell() {
   const { state, actions, toasts, globalSearchQuery } = useAppState();
   const unreadCount = useMemo(() => state.notifications.filter((n) => !n.read).length, [state.notifications]);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Responsive default:
+  // - desktop: visible
+  // - small screens: hidden (drawer)
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.matchMedia(`(min-width: ${DESKTOP_BREAKPOINT_PX + 1}px)`).matches;
+  });
+
+  const [isDesktop, setIsDesktop] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.matchMedia(`(min-width: ${DESKTOP_BREAKPOINT_PX + 1}px)`).matches;
+  });
 
   // Apply theme from settings
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", state.settings.theme || "light");
   }, [state.settings.theme]);
+
+  // Keep the sidebar default in sync with viewport:
+  // - When resizing to desktop => open
+  // - When resizing to mobile  => close
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const mq = window.matchMedia(`(min-width: ${DESKTOP_BREAKPOINT_PX + 1}px)`);
+    const onChange = (e) => {
+      const nextIsDesktop = e.matches;
+      setIsDesktop(nextIsDesktop);
+      setSidebarOpen(nextIsDesktop ? true : false);
+    };
+
+    // Initialize from MQ in case it differs from initial render.
+    setIsDesktop(mq.matches);
+    setSidebarOpen(mq.matches ? true : false);
+
+    // Cross-browser MQ listener support.
+    if (typeof mq.addEventListener === "function") {
+      mq.addEventListener("change", onChange);
+      return () => mq.removeEventListener("change", onChange);
+    }
+    mq.addListener(onChange);
+    return () => mq.removeListener(onChange);
+  }, []);
+
+  // Prevent background scrolling when the mobile drawer is open.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (isDesktop) return; // desktop sidebar is part of layout; no scroll locking
+    document.body.style.overflow = sidebarOpen ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [sidebarOpen, isDesktop]);
 
   const toggleTheme = () => {
     actions.updateSettings({ theme: state.settings.theme === "light" ? "dark" : "light" });
@@ -39,6 +89,12 @@ function Shell() {
 
   const submitHeaderSearch = () => {
     actions.submitGlobalSearch(globalSearchQuery);
+  };
+
+  // PUBLIC_INTERFACE
+  const toggleSidebar = () => {
+    /** Toggles sidebar visibility without page reload; used by header hamburger and overlay. */
+    setSidebarOpen((v) => !v);
   };
 
   return (
@@ -49,12 +105,18 @@ function Shell() {
           <div className="container header-inner">
             <div className="row header-left" style={{ gap: 10 }}>
               <button
-                className="icon-btn"
-                onClick={() => setSidebarOpen((v) => !v)}
-                aria-label="Toggle navigation"
+                className={`icon-btn hamburger ${sidebarOpen ? "is-open" : ""}`}
+                onClick={toggleSidebar}
+                aria-label={sidebarOpen ? "Close navigation" : "Open navigation"}
+                aria-expanded={sidebarOpen}
+                aria-controls="app-sidebar"
                 type="button"
               >
-                ☰
+                <span className="hamburger-lines" aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
+                </span>
               </button>
 
               <a className="brand" href="/" onClick={(e) => e.preventDefault()}>
@@ -124,12 +186,18 @@ function Shell() {
           </div>
         </header>
 
-        <div className="container shell-body">
+        {/* Mobile overlay (drawer mode) */}
+        <button
+          className={`sidebar-overlay ${!isDesktop && sidebarOpen ? "is-open" : ""}`}
+          type="button"
+          aria-label="Close navigation overlay"
+          onClick={() => setSidebarOpen(false)}
+        />
+
+        <div className={`container shell-body ${sidebarOpen ? "sidebar-open" : "sidebar-closed"}`}>
           <aside
-            className="sidebar"
-            style={{
-              display: sidebarOpen ? "block" : undefined,
-            }}
+            id="app-sidebar"
+            className={`sidebar ${sidebarOpen ? "is-open" : "is-closed"} ${isDesktop ? "is-desktop" : "is-drawer"}`}
             aria-label="Sidebar navigation"
           >
             <h3>Navigate</h3>
@@ -141,16 +209,43 @@ function Shell() {
               <NavLink to="/jobs">Jobs</NavLink>
               <NavLink to="/mock-tests">Mock Tests</NavLink>
               <NavLink to="/applications">Applications</NavLink>
-              <NavLink to="/notifications">
+              <NavLink
+                to="/notifications"
+                onClick={() => {
+                  // In drawer mode, close after navigation for dashboard-like UX.
+                  if (!isDesktop) setSidebarOpen(false);
+                }}
+              >
                 Notifications {unreadCount ? <span className="pill">{unreadCount}</span> : null}
               </NavLink>
-              <NavLink to="/settings">Settings</NavLink>
+              <NavLink
+                to="/settings"
+                onClick={() => {
+                  if (!isDesktop) setSidebarOpen(false);
+                }}
+              >
+                Settings
+              </NavLink>
             </nav>
 
             <h3 style={{ marginTop: 16 }}>Learn</h3>
             <nav className="nav">
-              <NavLink to="/about">About Us</NavLink>
-              <NavLink to="/how-it-works">How Talenvia Works</NavLink>
+              <NavLink
+                to="/about"
+                onClick={() => {
+                  if (!isDesktop) setSidebarOpen(false);
+                }}
+              >
+                About Us
+              </NavLink>
+              <NavLink
+                to="/how-it-works"
+                onClick={() => {
+                  if (!isDesktop) setSidebarOpen(false);
+                }}
+              >
+                How Talenvia Works
+              </NavLink>
             </nav>
 
             <div className="card full" style={{ marginTop: 14 }}>

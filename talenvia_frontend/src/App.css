@@ -251,6 +251,50 @@ button, input, select, textarea { font-family: inherit; }
   grid-template-columns: var(--sidebar-w) 1fr;
   gap: 16px;
   padding: 16px 0;
+
+  /* Smooth main-content resizing (no page reload). */
+  transition: grid-template-columns 240ms ease;
+}
+
+/* When sidebar is hidden, main content expands to full width. */
+.shell-body.sidebar-closed {
+  grid-template-columns: 1fr;
+}
+
+/* Sidebar hamburger (3 lines) */
+.hamburger {
+  padding: 10px 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hamburger-lines {
+  width: 18px;
+  height: 14px;
+  display: grid;
+  grid-template-rows: repeat(3, 1fr);
+  gap: 3px;
+}
+
+.hamburger-lines span {
+  display: block;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.9;
+  transition: transform 180ms ease, opacity 180ms ease;
+}
+
+/* Optional "X" morph for clearer open state */
+.hamburger.is-open .hamburger-lines span:nth-child(1) {
+  transform: translateY(5px) rotate(45deg);
+}
+.hamburger.is-open .hamburger-lines span:nth-child(2) {
+  opacity: 0;
+}
+.hamburger.is-open .hamburger-lines span:nth-child(3) {
+  transform: translateY(-5px) rotate(-45deg);
 }
 
 .sidebar {
@@ -265,10 +309,43 @@ button, input, select, textarea { font-family: inherit; }
   backdrop-filter: blur(10px);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
+
+  /* Smooth show/hide animation */
+  transform: translateX(0);
+  opacity: 1;
+  transition: transform 240ms ease, opacity 200ms ease;
+  will-change: transform;
+}
+
+.sidebar.is-closed {
+  /* Desktop closed state: slide out + collapse column via .shell-body.sidebar-closed */
+  transform: translateX(-12px);
+  opacity: 0;
+  pointer-events: none;
 }
 
 [data-theme="dark"] .sidebar {
   background: rgba(15, 23, 42, 0.70);
+}
+
+/* Overlay for drawer mode (mobile/tablet) */
+.sidebar-overlay {
+  position: fixed;
+  inset: var(--header-h) 0 0 0; /* keep header accessible */
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+  border: none;
+  padding: 0;
+  margin: 0;
+  z-index: 60;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms ease;
+}
+
+.sidebar-overlay.is-open {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .sidebar h3 {
@@ -566,11 +643,37 @@ label {
 }
 
 @media (max-width: 860px) {
-  .shell-body { grid-template-columns: 1fr; }
-  .sidebar {
-    position: relative;
-    top: 0;
-    height: auto;
+  /* Drawer mode: keep main content full width, show sidebar as an overlay panel when opened. */
+  .shell-body {
+    grid-template-columns: 1fr;
   }
+
+  .sidebar {
+    position: fixed;
+    top: calc(var(--header-h) + 12px);
+    left: 16px;
+    height: calc(100vh - var(--header-h) - 24px);
+    width: min(var(--sidebar-w), calc(100vw - 32px));
+    z-index: 70;
+    box-shadow: var(--shadow-md);
+
+    /* Start off-canvas; .is-open slides it in */
+    transform: translateX(calc(-100% - 18px));
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .sidebar.is-open {
+    transform: translateX(0);
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .sidebar.is-closed {
+    transform: translateX(calc(-100% - 18px));
+    opacity: 0;
+    pointer-events: none;
+  }
+
   .card { grid-column: 1 / -1; }
 }
