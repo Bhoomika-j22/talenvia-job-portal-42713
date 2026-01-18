@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { loadAppState, saveAppState } from "../utils/storage";
 
 /**
@@ -12,11 +13,13 @@ function makeId(prefix) {
   return `${prefix}-${Math.random().toString(16).slice(2)}-${Date.now().toString(16)}`;
 }
 
-// PUBLIC_INTERFACE
-export function AppStateProvider({ children }) {
-  /** Provides Talenvia app state and actions to descendants. */
+function AppStateProviderInner({ children }) {
+  /** Internal provider implementation; use AppStateProvider (router-aware wrapper) instead. */
   const [state, setState] = useState(() => loadAppState());
   const [toasts, setToasts] = useState([]);
+
+  // Router navigation for global search (keeps header search UX consistent across pages).
+  const navigate = useNavigate();
 
   // Global header search state (client-side; no navigation/reload required).
   const [globalSearchQuery, setGlobalSearchQuery] = useState("");
@@ -170,8 +173,8 @@ export function AppStateProvider({ children }) {
       submitGlobalSearch(query) {
         /**
          * Triggers a client-side search action for the given query.
-         * Current implementation shows a toast (no reload). Pages can optionally
-         * read globalSearchQuery and react to it in the future.
+         * - No page reload.
+         * - Navigates to the dedicated Search Results page for consistent UX.
          */
         const q = String(query || "").trim();
         if (!q) {
@@ -179,7 +182,10 @@ export function AppStateProvider({ children }) {
           return;
         }
 
-        // Client-side action trigger (no navigation required)
+        // Navigate to a dedicated results route so users can bookmark/share searches.
+        navigate(`/search?q=${encodeURIComponent(q)}`);
+
+        // Keep minimal feedback (header remains uncluttered).
         pushToast({ type: "info", title: "Search", description: `Searching for: ${q}` });
       },
 
@@ -194,6 +200,12 @@ export function AppStateProvider({ children }) {
   );
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
+}
+
+// PUBLIC_INTERFACE
+export function AppStateProvider({ children }) {
+  /** Router-aware app state provider (required for global search navigation). */
+  return <AppStateProviderInner>{children}</AppStateProviderInner>;
 }
 
 // PUBLIC_INTERFACE

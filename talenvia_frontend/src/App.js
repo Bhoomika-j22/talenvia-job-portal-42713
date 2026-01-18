@@ -13,6 +13,7 @@ import NotificationsPage from "./pages/NotificationsPage";
 import SettingsPage from "./pages/SettingsPage";
 import AboutPage from "./pages/AboutPage";
 import HowItWorksPage from "./pages/HowItWorksPage";
+import SearchResultsPage from "./pages/SearchResultsPage";
 
 /**
  * Talenvia React Frontend
@@ -183,6 +184,7 @@ function Shell() {
               <Route path="/skills" element={<Navigate to="/profile-skills" replace />} />
 
               <Route path="/jobs" element={<JobsPage />} />
+              <Route path="/search" element={<SearchResultsPage />} />
               <Route path="/mock-tests" element={<MockTestsPage />} />
               <Route path="/applications" element={<ApplicationsPage />} />
               <Route path="/notifications" element={<NotificationsPage />} />
