@@ -17,6 +17,7 @@ import SearchResultsPage from "./pages/SearchResultsPage";
 import { ensureUserRow, supabaseHealthCheck } from "./utils/supabaseHelpers";
 import { getSupabaseConfigStatus, supabase } from "./lib/supabaseClient";
 import { signInWithGoogleOAuth } from "./utils/authHelpers";
+import AuthModal from "./components/AuthModal";
 
 /**
  * Talenvia React Frontend
@@ -214,8 +215,17 @@ function IconSparkles() {
 }
 
 function Shell() {
-  const { state, actions, toasts, globalSearchQuery } = useAppState();
+  const { state, actions, toasts, globalSearchQuery, authUser } = useAppState();
   const unreadCount = useMemo(() => state.notifications.filter((n) => !n.read).length, [state.notifications]);
+
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState("signin"); // 'signin' | 'signup'
+
+  const avatarUrl =
+    authUser?.user_metadata?.avatar_url ||
+    authUser?.user_metadata?.picture ||
+    authUser?.user_metadata?.avatar ||
+    null;
 
   // Responsive default:
   // - desktop: visible
@@ -455,31 +465,74 @@ function Shell() {
                 🔔 {unreadCount ? <span className="pill" style={{ marginLeft: 8 }}>{unreadCount}</span> : null}
               </NavLink>
 
-              <button
-                className="btn"
-                type="button"
-                onClick={async () => {
-                  const res = await signInWithGoogleOAuth();
-                  if (!res.ok) {
-                    actions.pushToast({
-                      type: "error",
-                      title: "Google sign-in failed",
-                      description: res.error?.message || "Unable to start OAuth flow.",
-                      ttlMs: 4500,
-                    });
-                    return;
-                  }
-                  actions.pushToast({
-                    type: "info",
-                    title: "Redirecting…",
-                    description: "Continue with Google to finish signing in.",
-                    ttlMs: 2500,
-                  });
-                }}
-                aria-label="Sign in with Google"
-              >
-                Continue with Google
-              </button>
+              {!authUser ? (
+                <>
+                  <button
+                    className="btn"
+                    type="button"
+                    onClick={() => {
+                      setAuthModalMode("signin");
+                      setAuthModalOpen(true);
+                    }}
+                  >
+                    Sign in
+                  </button>
+
+                  <button
+                    className="primary-btn"
+                    type="button"
+                    onClick={() => {
+                      setAuthModalMode("signup");
+                      setAuthModalOpen(true);
+                    }}
+                  >
+                    Sign up
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="user-chip" title={authUser.email || "Signed in"}>
+                    {avatarUrl ? <img className="avatar" src={avatarUrl} alt="" /> : <span aria-hidden="true">👤</span>}
+                    <span className="user-email">{authUser.email || "Signed in"}</span>
+                  </div>
+
+                  <button
+                    className="btn danger"
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        if (!supabase) {
+                          actions.pushToast({
+                            type: "error",
+                            title: "Supabase not configured",
+                            description: "Missing REACT_APP_SUPABASE_URL / REACT_APP_SUPABASE_KEY.",
+                          });
+                          return;
+                        }
+                        const { error } = await supabase.auth.signOut();
+                        if (error) {
+                          console.error("[Supabase Auth] signOut error", JSON.stringify(error, null, 2));
+                          actions.pushToast({
+                            type: "error",
+                            title: "Sign out failed",
+                            description: error.message || "Unable to sign out.",
+                          });
+                        }
+                        // Success toast handled by onAuthStateChange SIGNED_OUT
+                      } catch (e) {
+                        console.error("[Supabase Auth] signOut exception", e);
+                        actions.pushToast({
+                          type: "error",
+                          title: "Sign out failed",
+                          description: e instanceof Error ? e.message : String(e),
+                        });
+                      }
+                    }}
+                  >
+                    Sign out
+                  </button>
+                </>
+              )}
 
               <button className="icon-btn" onClick={toggleTheme} aria-label="Toggle theme" type="button">
                 {state.settings.theme === "light" ? "🌙" : "☀️"}
@@ -501,6 +554,16 @@ function Shell() {
             </div>
           </div>
         </header>
+
+        {authModalOpen ? (
+          <AuthModal
+            mode={authModalMode}
+            actions={actions}
+            onClose={() => {
+              setAuthModalOpen(false);
+            }}
+          />
+        ) : null}
 
         {/* Mobile overlay (drawer mode) */}
         <button
