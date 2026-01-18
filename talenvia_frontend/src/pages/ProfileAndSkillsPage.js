@@ -47,7 +47,7 @@ export default function ProfileAndSkillsPage() {
     newSkill: false,
   });
 
-  // Inline errors for profile fields + skill input
+  // Inline errors for profile fields + skill input + career preferences
   const [errors, setErrors] = useState({
     fullName: "",
     email: "",
@@ -55,6 +55,13 @@ export default function ProfileAndSkillsPage() {
     location: "",
     bio: "",
     newSkill: "",
+
+    prefLocation: "",
+    prefRole: "",
+    prefSalary: "",
+    prefShift: "",
+    prefJobType: "",
+    prefEmploymentType: "",
   });
 
   // KEY SKILLS (persist via AppState skills list)
@@ -63,6 +70,25 @@ export default function ProfileAndSkillsPage() {
     () => new Set(state.skills.map((s) => String(s.name || "").toLowerCase())),
     [state.skills]
   );
+
+  // CAREER PREFERENCES (UI-only but should still behave like other editable sections)
+  const [careerPrefDraft, setCareerPrefDraft] = useState(() => ({
+    preferredLocation: state.profile.careerPreferences?.preferredLocation || "",
+    preferredRole: state.profile.careerPreferences?.preferredRole || "",
+    expectedSalary: state.profile.careerPreferences?.expectedSalary || "",
+    shift: state.profile.careerPreferences?.shift || "",
+    jobType: state.profile.careerPreferences?.jobType || "",
+    employmentType: state.profile.careerPreferences?.employmentType || "",
+  }));
+
+  const [careerPrefTouched, setCareerPrefTouched] = useState({
+    preferredLocation: false,
+    preferredRole: false,
+    expectedSalary: false,
+    shift: false,
+    jobType: false,
+    employmentType: false,
+  });
 
   const errorId = (name) => `ps-err-${name}`;
 
@@ -120,8 +146,50 @@ export default function ProfileAndSkillsPage() {
     return "";
   };
 
+  const validateCareerPreferences = (draft) => {
+    // Keep these validations practical and inline:
+    // - preferredLocation, preferredRole required (mirrors profile required fields)
+    // - expectedSalary optional but must be a reasonable numeric value if provided
+    // - selects must be chosen (not empty)
+    const next = {
+      prefLocation: "",
+      prefRole: "",
+      prefSalary: "",
+      prefShift: "",
+      prefJobType: "",
+      prefEmploymentType: "",
+    };
+
+    if (!draft.preferredLocation.trim()) next.prefLocation = "Preferred location is required.";
+    if (!draft.preferredRole.trim()) next.prefRole = "Preferred role is required.";
+
+    const salaryRaw = String(draft.expectedSalary || "").trim();
+    if (salaryRaw) {
+      // Allow digits and separators/units; extract digits to validate magnitude.
+      const digits = salaryRaw.replace(/[^\d]/g, "");
+      if (!digits) {
+        next.prefSalary = "Expected salary should include a number.";
+      } else {
+        const n = Number(digits);
+        if (Number.isNaN(n)) next.prefSalary = "Expected salary is invalid.";
+        if (n < 1000) next.prefSalary = "Expected salary looks too low.";
+        if (n > 100000000) next.prefSalary = "Expected salary looks too high.";
+      }
+    }
+
+    if (!draft.shift) next.prefShift = "Shift is required.";
+    if (!draft.jobType) next.prefJobType = "Job type is required.";
+    if (!draft.employmentType) next.prefEmploymentType = "Employment type is required.";
+
+    return next;
+  };
+
   const markTouched = (fieldName) => {
     setTouched((p) => ({ ...p, [fieldName]: true }));
+  };
+
+  const markCareerPrefTouched = (fieldName) => {
+    setCareerPrefTouched((p) => ({ ...p, [fieldName]: true }));
   };
 
   const updateProfileField = (fieldName, value) => {
@@ -135,6 +203,25 @@ export default function ProfileAndSkillsPage() {
       // Only update the single field's error here to avoid surprising updates in other fields.
       maybeNext[fieldName] = nextProfileErrors[fieldName] || "";
       return maybeNext;
+    });
+  };
+
+  const updateCareerPrefField = (fieldName, value) => {
+    setCareerPrefDraft((p) => ({ ...p, [fieldName]: value }));
+
+    // Live-validate only the corresponding error field, after touch.
+    setErrors((prev) => {
+      const next = { ...prev };
+      const nextPrefErrors = validateCareerPreferences({ ...careerPrefDraft, [fieldName]: value });
+
+      if (fieldName === "preferredLocation") next.prefLocation = nextPrefErrors.prefLocation || "";
+      if (fieldName === "preferredRole") next.prefRole = nextPrefErrors.prefRole || "";
+      if (fieldName === "expectedSalary") next.prefSalary = nextPrefErrors.prefSalary || "";
+      if (fieldName === "shift") next.prefShift = nextPrefErrors.prefShift || "";
+      if (fieldName === "jobType") next.prefJobType = nextPrefErrors.prefJobType || "";
+      if (fieldName === "employmentType") next.prefEmploymentType = nextPrefErrors.prefEmploymentType || "";
+
+      return next;
     });
   };
 
@@ -203,6 +290,71 @@ export default function ProfileAndSkillsPage() {
       newSkill: touched.newSkill,
     });
     setErrors((p) => ({ ...p, fullName: "", email: "", phone: "", location: "", bio: "" }));
+  };
+
+  const saveCareerPreferences = () => {
+    // Mark all as touched so errors show if invalid.
+    setCareerPrefTouched({
+      preferredLocation: true,
+      preferredRole: true,
+      expectedSalary: true,
+      shift: true,
+      jobType: true,
+      employmentType: true,
+    });
+
+    const nextErrors = validateCareerPreferences(careerPrefDraft);
+    setErrors((prev) => ({ ...prev, ...nextErrors }));
+
+    const hasAnyError = Object.values(nextErrors).some(Boolean);
+    if (hasAnyError) {
+      actions.pushToast({
+        type: "error",
+        title: "Please fix the highlighted fields",
+        description: "Some career preference fields are missing or invalid.",
+      });
+      return;
+    }
+
+    // Persist into profile as an extra field; AppState already merges profile patches safely.
+    actions.updateProfile({
+      careerPreferences: {
+        preferredLocation: careerPrefDraft.preferredLocation.trim(),
+        preferredRole: careerPrefDraft.preferredRole.trim(),
+        expectedSalary: String(careerPrefDraft.expectedSalary || "").trim(),
+        shift: careerPrefDraft.shift,
+        jobType: careerPrefDraft.jobType,
+        employmentType: careerPrefDraft.employmentType,
+      },
+    });
+  };
+
+  const resetCareerPreferences = () => {
+    setCareerPrefDraft({
+      preferredLocation: state.profile.careerPreferences?.preferredLocation || "",
+      preferredRole: state.profile.careerPreferences?.preferredRole || "",
+      expectedSalary: state.profile.careerPreferences?.expectedSalary || "",
+      shift: state.profile.careerPreferences?.shift || "",
+      jobType: state.profile.careerPreferences?.jobType || "",
+      employmentType: state.profile.careerPreferences?.employmentType || "",
+    });
+    setCareerPrefTouched({
+      preferredLocation: false,
+      preferredRole: false,
+      expectedSalary: false,
+      shift: false,
+      jobType: false,
+      employmentType: false,
+    });
+    setErrors((p) => ({
+      ...p,
+      prefLocation: "",
+      prefRole: "",
+      prefSalary: "",
+      prefShift: "",
+      prefJobType: "",
+      prefEmploymentType: "",
+    }));
   };
 
   return (
@@ -587,60 +739,218 @@ export default function ProfileAndSkillsPage() {
         </div>
 
         {/* CAREER PREFERENCES */}
-        <div className="card full">
-          <h4>Career Preferences</h4>
-          <p style={{ margin: "6px 0 0", color: "var(--muted)" }}>
-            Preferences are UI-only fields for now.
-          </p>
+        <EditableSection
+          title="Career Preferences"
+          viewContent={
+            <div className="grid" style={{ gridTemplateColumns: "repeat(12, 1fr)", gap: 12 }}>
+              <div className="card third" style={{ gridColumn: "span 4" }}>
+                <h4 style={{ marginTop: 0 }}>Preferred location</h4>
+                <p>{state.profile.careerPreferences?.preferredLocation || "—"}</p>
+              </div>
 
-          <div className="row" style={{ marginTop: 10 }}>
-            <div className="field">
-              <label htmlFor="ps-pref-location">Preferred Location</label>
-              <input id="ps-pref-location" className="input" placeholder="Preferred Location" />
-            </div>
+              <div className="card third" style={{ gridColumn: "span 4" }}>
+                <h4 style={{ marginTop: 0 }}>Preferred role</h4>
+                <p>{state.profile.careerPreferences?.preferredRole || "—"}</p>
+              </div>
 
-            <div className="field">
-              <label htmlFor="ps-pref-role">Preferred Role</label>
-              <input id="ps-pref-role" className="input" placeholder="Preferred Role" />
-            </div>
-          </div>
+              <div className="card third" style={{ gridColumn: "span 4" }}>
+                <h4 style={{ marginTop: 0 }}>Expected salary</h4>
+                <p style={{ color: "var(--muted)" }}>{state.profile.careerPreferences?.expectedSalary || "—"}</p>
+              </div>
 
-          <div className="row" style={{ marginTop: 10 }}>
-            <div className="field">
-              <label htmlFor="ps-pref-salary">Expected Salary</label>
-              <input id="ps-pref-salary" className="input" placeholder="Expected Salary" />
-            </div>
+              <div className="card third" style={{ gridColumn: "span 4" }}>
+                <h4 style={{ marginTop: 0 }}>Shift</h4>
+                <p>{state.profile.careerPreferences?.shift || "—"}</p>
+              </div>
 
-            <div className="field" style={{ maxWidth: 260 }}>
-              <label htmlFor="ps-pref-shift">Shift</label>
-              <select id="ps-pref-shift" className="select" defaultValue="Shift">
-                <option>Shift</option>
-                <option>Day</option>
-                <option>Night</option>
-                <option>Flexible</option>
-              </select>
-            </div>
+              <div className="card third" style={{ gridColumn: "span 4" }}>
+                <h4 style={{ marginTop: 0 }}>Job type</h4>
+                <p>{state.profile.careerPreferences?.jobType || "—"}</p>
+              </div>
 
-            <div className="field" style={{ maxWidth: 260 }}>
-              <label htmlFor="ps-pref-jobtype">Job Type</label>
-              <select id="ps-pref-jobtype" className="select" defaultValue="Job Type">
-                <option>Job Type</option>
-                <option>Full-time</option>
-                <option>Part-time</option>
-                <option>Internship</option>
-              </select>
-            </div>
+              <div className="card third" style={{ gridColumn: "span 4" }}>
+                <h4 style={{ marginTop: 0 }}>Employment type</h4>
+                <p>{state.profile.careerPreferences?.employmentType || "—"}</p>
+              </div>
 
-            <div className="field" style={{ maxWidth: 260 }}>
-              <label htmlFor="ps-pref-emptype">Employment Type</label>
-              <select id="ps-pref-emptype" className="select" defaultValue="Employment Type">
-                <option>Employment Type</option>
-                <option>Permanent</option>
-                <option>Contract</option>
-              </select>
+              <div className="card full" style={{ gridColumn: "1 / -1" }}>
+                <p style={{ margin: 0, color: "var(--muted)" }}>
+                  These preferences are stored locally (preview mode). Use them as a consistent baseline while applying.
+                </p>
+              </div>
             </div>
-          </div>
-        </div>
+          }
+          editContent={
+            <>
+              <p style={{ margin: "6px 0 0", color: "var(--muted)" }}>
+                Update your targets. Save will persist locally; Cancel will revert unsaved changes.
+              </p>
+
+              <div className="row" style={{ marginTop: 10 }}>
+                <div className="field">
+                  <label htmlFor="ps-pref-location">Preferred Location</label>
+                  <input
+                    id="ps-pref-location"
+                    className={getInputClassName("prefLocation")}
+                    placeholder="e.g. Remote / Bengaluru"
+                    value={careerPrefDraft.preferredLocation}
+                    onChange={(e) => updateCareerPrefField("preferredLocation", e.target.value)}
+                    onBlur={() => {
+                      markCareerPrefTouched("preferredLocation");
+                      const next = validateCareerPreferences(careerPrefDraft);
+                      setErrors((p) => ({ ...p, prefLocation: next.prefLocation }));
+                    }}
+                    aria-invalid={Boolean(careerPrefTouched.preferredLocation && errors.prefLocation)}
+                    aria-describedby={
+                      careerPrefTouched.preferredLocation && errors.prefLocation ? errorId("prefLocation") : undefined
+                    }
+                  />
+                  {careerPrefTouched.preferredLocation && errors.prefLocation ? (
+                    <p className="field-error" id={errorId("prefLocation")}>
+                      {errors.prefLocation}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="field">
+                  <label htmlFor="ps-pref-role">Preferred Role</label>
+                  <input
+                    id="ps-pref-role"
+                    className={getInputClassName("prefRole")}
+                    placeholder="e.g. Frontend Engineer"
+                    value={careerPrefDraft.preferredRole}
+                    onChange={(e) => updateCareerPrefField("preferredRole", e.target.value)}
+                    onBlur={() => {
+                      markCareerPrefTouched("preferredRole");
+                      const next = validateCareerPreferences(careerPrefDraft);
+                      setErrors((p) => ({ ...p, prefRole: next.prefRole }));
+                    }}
+                    aria-invalid={Boolean(careerPrefTouched.preferredRole && errors.prefRole)}
+                    aria-describedby={careerPrefTouched.preferredRole && errors.prefRole ? errorId("prefRole") : undefined}
+                  />
+                  {careerPrefTouched.preferredRole && errors.prefRole ? (
+                    <p className="field-error" id={errorId("prefRole")}>
+                      {errors.prefRole}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="row" style={{ marginTop: 10 }}>
+                <div className="field">
+                  <label htmlFor="ps-pref-salary">Expected Salary</label>
+                  <input
+                    id="ps-pref-salary"
+                    className={getInputClassName("prefSalary")}
+                    placeholder="e.g. 18 LPA / 120000"
+                    value={careerPrefDraft.expectedSalary}
+                    onChange={(e) => updateCareerPrefField("expectedSalary", e.target.value)}
+                    onBlur={() => {
+                      markCareerPrefTouched("expectedSalary");
+                      const next = validateCareerPreferences(careerPrefDraft);
+                      setErrors((p) => ({ ...p, prefSalary: next.prefSalary }));
+                    }}
+                    aria-invalid={Boolean(careerPrefTouched.expectedSalary && errors.prefSalary)}
+                    aria-describedby={
+                      careerPrefTouched.expectedSalary && errors.prefSalary ? errorId("prefSalary") : undefined
+                    }
+                  />
+                  {careerPrefTouched.expectedSalary && errors.prefSalary ? (
+                    <p className="field-error" id={errorId("prefSalary")}>
+                      {errors.prefSalary}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="field" style={{ maxWidth: 260 }}>
+                  <label htmlFor="ps-pref-shift">Shift</label>
+                  <select
+                    id="ps-pref-shift"
+                    className={`select${errors.prefShift ? " input-invalid" : ""}`}
+                    value={careerPrefDraft.shift}
+                    onChange={(e) => updateCareerPrefField("shift", e.target.value)}
+                    onBlur={() => {
+                      markCareerPrefTouched("shift");
+                      const next = validateCareerPreferences(careerPrefDraft);
+                      setErrors((p) => ({ ...p, prefShift: next.prefShift }));
+                    }}
+                    aria-invalid={Boolean(careerPrefTouched.shift && errors.prefShift)}
+                    aria-describedby={careerPrefTouched.shift && errors.prefShift ? errorId("prefShift") : undefined}
+                  >
+                    <option value="">Select shift</option>
+                    <option value="Day">Day</option>
+                    <option value="Night">Night</option>
+                    <option value="Flexible">Flexible</option>
+                  </select>
+                  {careerPrefTouched.shift && errors.prefShift ? (
+                    <p className="field-error" id={errorId("prefShift")}>
+                      {errors.prefShift}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="field" style={{ maxWidth: 260 }}>
+                  <label htmlFor="ps-pref-jobtype">Job Type</label>
+                  <select
+                    id="ps-pref-jobtype"
+                    className={`select${errors.prefJobType ? " input-invalid" : ""}`}
+                    value={careerPrefDraft.jobType}
+                    onChange={(e) => updateCareerPrefField("jobType", e.target.value)}
+                    onBlur={() => {
+                      markCareerPrefTouched("jobType");
+                      const next = validateCareerPreferences(careerPrefDraft);
+                      setErrors((p) => ({ ...p, prefJobType: next.prefJobType }));
+                    }}
+                    aria-invalid={Boolean(careerPrefTouched.jobType && errors.prefJobType)}
+                    aria-describedby={careerPrefTouched.jobType && errors.prefJobType ? errorId("prefJobType") : undefined}
+                  >
+                    <option value="">Select job type</option>
+                    <option value="Full-time">Full-time</option>
+                    <option value="Part-time">Part-time</option>
+                    <option value="Internship">Internship</option>
+                  </select>
+                  {careerPrefTouched.jobType && errors.prefJobType ? (
+                    <p className="field-error" id={errorId("prefJobType")}>
+                      {errors.prefJobType}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="field" style={{ maxWidth: 260 }}>
+                  <label htmlFor="ps-pref-emptype">Employment Type</label>
+                  <select
+                    id="ps-pref-emptype"
+                    className={`select${errors.prefEmploymentType ? " input-invalid" : ""}`}
+                    value={careerPrefDraft.employmentType}
+                    onChange={(e) => updateCareerPrefField("employmentType", e.target.value)}
+                    onBlur={() => {
+                      markCareerPrefTouched("employmentType");
+                      const next = validateCareerPreferences(careerPrefDraft);
+                      setErrors((p) => ({ ...p, prefEmploymentType: next.prefEmploymentType }));
+                    }}
+                    aria-invalid={Boolean(careerPrefTouched.employmentType && errors.prefEmploymentType)}
+                    aria-describedby={
+                      careerPrefTouched.employmentType && errors.prefEmploymentType
+                        ? errorId("prefEmploymentType")
+                        : undefined
+                    }
+                  >
+                    <option value="">Select employment type</option>
+                    <option value="Permanent">Permanent</option>
+                    <option value="Contract">Contract</option>
+                  </select>
+                  {careerPrefTouched.employmentType && errors.prefEmploymentType ? (
+                    <p className="field-error" id={errorId("prefEmploymentType")}>
+                      {errors.prefEmploymentType}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            </>
+          }
+          onSave={saveCareerPreferences}
+          onCancel={resetCareerPreferences}
+        />
 
       </div>
     </section>
