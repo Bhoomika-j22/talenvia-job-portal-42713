@@ -406,6 +406,31 @@ button, input, select, textarea { font-family: inherit; }
   flex: 0 0 auto;
 }
 
+/* Subtle hover animation target: apply transform on the icon container
+   so the label/layout never shifts (no layout shift). */
+.nav-icon.animate-on-hover {
+  transform: translateY(0) scale(1);
+  transition: transform 180ms ease-out;
+  will-change: transform;
+}
+
+/* Animate icons only when hovering a *non-active* sidebar item.
+   This prevents active-state jitter while preserving existing color rules. */
+.nav a:not(.active):hover .nav-icon.animate-on-hover {
+  transform: translateY(-1px) scale(1.05);
+}
+
+/* Respect reduced motion preference: disable transitions and transforms. */
+@media (prefers-reduced-motion: reduce) {
+  .nav-icon.animate-on-hover {
+    transition: none;
+    transform: none;
+  }
+  .nav a:not(.active):hover .nav-icon.animate-on-hover {
+    transform: none;
+  }
+}
+
 .nav-icon svg {
   width: 18px;
   height: 18px;

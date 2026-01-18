@@ -27,7 +27,7 @@ const DESKTOP_BREAKPOINT_PX = 860;
 
 function SidebarIcon({ children, title }) {
   return (
-    <span className="nav-icon" aria-hidden="true" title={title}>
+    <span className="nav-icon animate-on-hover" aria-hidden="true" title={title}>
       {children}
     </span>
   );
