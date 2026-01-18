@@ -590,15 +590,17 @@ export default function ProfileAndSkillsPage() {
   };
 
   const deleteResume = async () => {
-    const existingPath = state.profile.resume?.path;
-    if (!existingPath) {
+    // Defensive: older saved data might have stored a URL or "resumes/<uid>/resume.pdf".
+    // The storage helper will normalize, but we keep this variable name meaningful.
+    const existingPathOrUrl = state.profile.resume?.path || state.profile.resume?.url;
+    if (!existingPathOrUrl) {
       actions.pushToast({ type: "info", title: "No resume to delete", description: "Upload a resume first." });
       return;
     }
 
     setResumeDeleteBusy(true);
     try {
-      const del = await deleteResumeByPath(existingPath);
+      const del = await deleteResumeByPath(existingPathOrUrl);
 
       if (!del.ok) {
         if (del.reason === "not_configured" || del.reason === "no_user") {
