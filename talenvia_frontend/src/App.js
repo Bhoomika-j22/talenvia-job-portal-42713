@@ -1,12 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { NavLink, Route, Routes } from "react-router-dom";
+import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import "./App.css";
 
 import { AppStateProvider, useAppState } from "./state/AppState";
 import ToastStack from "./components/ToastStack";
 import DashboardPage from "./pages/DashboardPage";
-import ProfilePage from "./pages/ProfilePage";
-import SkillsPage from "./pages/SkillsPage";
+import ProfileAndSkillsPage from "./pages/ProfileAndSkillsPage";
 import MockTestsPage from "./pages/MockTestsPage";
 import ApplicationsPage from "./pages/ApplicationsPage";
 import NotificationsPage from "./pages/NotificationsPage";
@@ -99,8 +98,7 @@ function Shell() {
               <NavLink to="/" end>
                 Dashboard <span className="pill">Home</span>
               </NavLink>
-              <NavLink to="/profile">Profile</NavLink>
-              <NavLink to="/skills">Skills</NavLink>
+              <NavLink to="/profile-skills">Profile &amp; Skills</NavLink>
               <NavLink to="/mock-tests">Mock Tests</NavLink>
               <NavLink to="/applications">Applications</NavLink>
               <NavLink to="/notifications">
@@ -139,8 +137,12 @@ function Shell() {
           <main className="main" aria-label="Main content">
             <Routes>
               <Route path="/" element={<DashboardPage />} />
-              <Route path="/profile" element={<ProfilePage />} />
-              <Route path="/skills" element={<SkillsPage />} />
+              <Route path="/profile-skills" element={<ProfileAndSkillsPage />} />
+
+              {/* Backwards-compatible redirects (old sidebar/page routes) */}
+              <Route path="/profile" element={<Navigate to="/profile-skills" replace />} />
+              <Route path="/skills" element={<Navigate to="/profile-skills" replace />} />
+
               <Route path="/mock-tests" element={<MockTestsPage />} />
               <Route path="/applications" element={<ApplicationsPage />} />
               <Route path="/notifications" element={<NotificationsPage />} />
