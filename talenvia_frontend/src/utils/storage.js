@@ -43,6 +43,48 @@ function getDefaultState() {
         score: null,
         lastAttempt: null,
       },
+      {
+        id: "mt-3",
+        title: "CSS Layout & Responsive Design (12 mins)",
+        status: "Not started",
+        score: null,
+        lastAttempt: null,
+      },
+      {
+        id: "mt-4",
+        title: "TypeScript Essentials (18 mins)",
+        status: "Not started",
+        score: null,
+        lastAttempt: null,
+      },
+      {
+        id: "mt-5",
+        title: "System Design Basics (25 mins)",
+        status: "Not started",
+        score: null,
+        lastAttempt: null,
+      },
+      {
+        id: "mt-6",
+        title: "Behavioral Interview Prep (10 mins)",
+        status: "Not started",
+        score: null,
+        lastAttempt: null,
+      },
+      {
+        id: "mt-7",
+        title: "Data Structures: Arrays & Hash Maps (15 mins)",
+        status: "Not started",
+        score: null,
+        lastAttempt: null,
+      },
+      {
+        id: "mt-8",
+        title: "Debugging & Code Reading (14 mins)",
+        status: "Not started",
+        score: null,
+        lastAttempt: null,
+      },
     ],
     applications: [
       {
