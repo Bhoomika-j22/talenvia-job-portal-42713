@@ -12,7 +12,10 @@ import { createClient } from "@supabase/supabase-js";
  */
 
 const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || "";
-const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY || "";
+// Support both env var names:
+// - container env list: REACT_APP_SUPABASE_KEY
+// - older convention used in this repo: REACT_APP_SUPABASE_ANON_KEY
+const supabaseAnonKey = process.env.REACT_APP_SUPABASE_KEY || process.env.REACT_APP_SUPABASE_ANON_KEY || "";
 
 /**
  * Supabase client instance (or null if not configured).
