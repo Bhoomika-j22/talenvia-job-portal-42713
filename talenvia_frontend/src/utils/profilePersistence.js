@@ -20,16 +20,26 @@ import { isSupabaseConfigured, supabase } from "../lib/supabaseClient";
 export async function getCurrentUserId() {
   /** Returns the current Supabase auth user id, or a safe error object. Never throws. */
   if (!isSupabaseConfigured() || !supabase) {
+    // eslint-disable-next-line no-console
+    console.log("[DIAG] getCurrentUserId -> not_configured");
     return { ok: false, reason: "not_configured" };
   }
 
   try {
+    // eslint-disable-next-line no-console
+    console.log("[DIAG] getCurrentUserId -> calling supabase.auth.getUser()");
     const { data, error } = await supabase.auth.getUser();
+
+    // eslint-disable-next-line no-console
+    console.log("[DIAG] getCurrentUserId -> supabase.auth.getUser() result:", { data, error });
+
     if (error) return { ok: false, reason: "auth_error", error: { message: error.message } };
     const userId = data?.user?.id;
     if (!userId) return { ok: false, reason: "no_user" };
     return { ok: true, userId };
   } catch (e) {
+    // eslint-disable-next-line no-console
+    console.log("[DIAG] getCurrentUserId -> exception:", e);
     return { ok: false, reason: "auth_error", error: { message: e instanceof Error ? e.message : String(e) } };
   }
 }
@@ -111,9 +121,15 @@ async function upsertUserRow(userId, profile) {
     updated_at: new Date().toISOString(),
   };
 
-  const { error } = await supabase.from("users").upsert(row, { onConflict: "user_id" });
+  // eslint-disable-next-line no-console
+  console.log("[DIAG] upsertUserRow -> supabase.from('users').upsert", row);
+
+  const { data, error } = await supabase.from("users").upsert(row, { onConflict: "user_id" }).select("*");
+  // eslint-disable-next-line no-console
+  console.log("[DIAG] upsertUserRow -> result:", { data, error });
+
   if (error) return { ok: false, reason: "error", error: { message: error.message } };
-  return { ok: true };
+  return { ok: true, data };
 }
 
 /**
@@ -202,8 +218,15 @@ async function syncUserSkills(userId, skills) {
     .map((s) => ({ name: normalizeSkillName(s?.name), level: s?.level }))
     .filter((s) => s.name);
 
+  // eslint-disable-next-line no-console
+  console.log("[DIAG] syncUserSkills -> desired:", desired);
+
   const desiredLower = new Set(desired.map((s) => s.name.toLowerCase()));
   const dictRes = await ensureSkillDictionary(desired.map((s) => s.name));
+
+  // eslint-disable-next-line no-console
+  console.log("[DIAG] syncUserSkills -> ensureSkillDictionary result:", dictRes);
+
   if (!dictRes.ok) return dictRes;
 
   // Current join rows (with skill_id) to compute deletions
@@ -218,6 +241,9 @@ async function syncUserSkills(userId, skills) {
     )
     .eq("user_id", userId);
 
+  // eslint-disable-next-line no-console
+  console.log("[DIAG] syncUserSkills -> current user_skills rows:", { currentRows, currentErr });
+
   if (currentErr) return { ok: false, reason: "error", error: { message: currentErr.message } };
   const current = Array.isArray(currentRows) ? currentRows : [];
 
@@ -226,6 +252,9 @@ async function syncUserSkills(userId, skills) {
     .filter((r) => r.skill_id && r.name)
     .filter((r) => !desiredLower.has(String(r.name).toLowerCase()))
     .map((r) => r.skill_id);
+
+  // eslint-disable-next-line no-console
+  console.log("[DIAG] syncUserSkills -> toDeleteSkillIds:", toDeleteSkillIds);
 
   // Upsert join rows for desired skills
   const joinUpserts = desired
@@ -241,14 +270,31 @@ async function syncUserSkills(userId, skills) {
     })
     .filter(Boolean);
 
+  // eslint-disable-next-line no-console
+  console.log("[DIAG] syncUserSkills -> joinUpserts:", joinUpserts);
+
   if (joinUpserts.length) {
-    const { error: joinErr } = await supabase.from("user_skills").upsert(joinUpserts, { onConflict: "user_id,skill_id" });
+    const { data, error: joinErr } = await supabase
+      .from("user_skills")
+      .upsert(joinUpserts, { onConflict: "user_id,skill_id" })
+      .select("*");
+    // eslint-disable-next-line no-console
+    console.log("[DIAG] syncUserSkills -> upsert user_skills result:", { data, joinErr });
+
     if (joinErr) return { ok: false, reason: "error", error: { message: joinErr.message } };
   }
 
   // Delete removed join rows
   if (toDeleteSkillIds.length) {
-    const { error: delErr } = await supabase.from("user_skills").delete().eq("user_id", userId).in("skill_id", toDeleteSkillIds);
+    const { data, error: delErr } = await supabase
+      .from("user_skills")
+      .delete()
+      .eq("user_id", userId)
+      .in("skill_id", toDeleteSkillIds)
+      .select("*");
+    // eslint-disable-next-line no-console
+    console.log("[DIAG] syncUserSkills -> delete removed user_skills result:", { data, delErr });
+
     if (delErr) return { ok: false, reason: "error", error: { message: delErr.message } };
   }
 

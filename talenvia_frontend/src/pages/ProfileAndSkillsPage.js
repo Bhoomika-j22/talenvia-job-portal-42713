@@ -528,6 +528,18 @@ export default function ProfileAndSkillsPage() {
   };
 
   const saveSkills = () => {
+    // TEMP DIAGNOSTICS: log Skills save path and drafts
+    // eslint-disable-next-line no-console
+    console.groupCollapsed("[DIAG] saveSkills()");
+    // eslint-disable-next-line no-console
+    console.log("[DIAG] state.skills (before):", state.skills);
+    // eslint-disable-next-line no-console
+    console.log("[DIAG] skillsDraft (draft):", skillsDraft);
+    // eslint-disable-next-line no-console
+    console.log("[DIAG] state.profile (for persistence):", state.profile);
+    // eslint-disable-next-line no-console
+    console.groupEnd();
+
     // Commit draft to global state.
     // We don't have a bulk setter; so we reconcile via remove+add to preserve AppState structure.
     const nextNames = new Set(skillsDraft.map((s) => s.name));
@@ -547,10 +559,15 @@ export default function ProfileAndSkillsPage() {
     // This is what we also sync to Supabase.
     const nextSkills = skillsDraft.map((s) => ({ name: s.name, level: s.level || "Intermediate" }));
 
+    // eslint-disable-next-line no-console
+    console.log("[DIAG] saveSkills -> computed nextSkills (payload.skills):", nextSkills);
+
     // Note: If user changed levels, we don't currently support editing skill levels in AppState.
     // Keep UI consistent by syncing the draft back to the (possibly updated) global list.
     setSkillsDraft(state.skills.map((s) => ({ ...s })));
 
+    // eslint-disable-next-line no-console
+    console.log("[DIAG] saveSkills -> calling persistToSupabaseBestEffort(state.profile, nextSkills)");
     void persistToSupabaseBestEffort(state.profile, nextSkills);
   };
 
@@ -563,7 +580,29 @@ export default function ProfileAndSkillsPage() {
 
   const persistToSupabaseBestEffort = async (nextProfile, nextSkills) => {
     // Best-effort persistence: do not block UI, and do not throw.
+    // TEMP DIAGNOSTICS: log auth/session + payload + helper response.
+    try {
+      // eslint-disable-next-line no-console
+      console.groupCollapsed("[DIAG] persistToSupabaseBestEffort()");
+      // eslint-disable-next-line no-console
+      console.log("[DIAG] AppState.profile (current):", state.profile);
+      // eslint-disable-next-line no-console
+      console.log("[DIAG] nextProfile (payload.profile):", nextProfile);
+      // eslint-disable-next-line no-console
+      console.log("[DIAG] nextSkills (payload.skills):", nextSkills);
+      // eslint-disable-next-line no-console
+      console.log("[DIAG] calling helper: saveProfileAndSkillsToSupabase()");
+      // eslint-disable-next-line no-console
+      console.groupEnd();
+    } catch {
+      // ignore console failures
+    }
+
     const res = await saveProfileAndSkillsToSupabase({ profile: nextProfile, skills: nextSkills });
+
+    // eslint-disable-next-line no-console
+    console.log("[DIAG] saveProfileAndSkillsToSupabase response:", res);
+
     if (!res.ok) {
       // Not configured / not logged in should not be noisy.
       if (res.reason === "not_configured" || res.reason === "no_user") return;
@@ -673,6 +712,18 @@ export default function ProfileAndSkillsPage() {
   };
 
   const saveProfile = () => {
+    // TEMP DIAGNOSTICS: log draft + current auth-ish state before save
+    // eslint-disable-next-line no-console
+    console.groupCollapsed("[DIAG] saveProfile()");
+    // eslint-disable-next-line no-console
+    console.log("[DIAG] profileDraft:", profileDraft);
+    // eslint-disable-next-line no-console
+    console.log("[DIAG] state.profile (before):", state.profile);
+    // eslint-disable-next-line no-console
+    console.log("[DIAG] state.skills (for persistence):", state.skills);
+    // eslint-disable-next-line no-console
+    console.groupEnd();
+
     // Mark all profile fields as touched to reveal all errors if submission fails.
     setTouched((p) => ({ ...p, fullName: true, email: true, phone: true, location: true, bio: true }));
 
@@ -698,10 +749,22 @@ export default function ProfileAndSkillsPage() {
       bio: profileDraft.bio,
     };
 
+    // eslint-disable-next-line no-console
+    console.log("[DIAG] saveProfile -> computed nextProfile:", nextProfile);
+
     actions.updateProfile(nextProfile);
 
     // 1) Persist BASIC profile to public.users with explicit mapping and session guard.
     void (async () => {
+      // eslint-disable-next-line no-console
+      console.log("[DIAG] calling helper: upsertUserBasicProfile()", {
+        name: nextProfile.fullName,
+        email: nextProfile.email,
+        phone_number: nextProfile.phone,
+        location: nextProfile.location,
+        profile_photo_url: nextProfile.profilePhotoUrl || null,
+      });
+
       const up = await upsertUserBasicProfile({
         name: nextProfile.fullName,
         email: nextProfile.email,
@@ -709,6 +772,9 @@ export default function ProfileAndSkillsPage() {
         location: nextProfile.location,
         profile_photo_url: nextProfile.profilePhotoUrl || null,
       });
+
+      // eslint-disable-next-line no-console
+      console.log("[DIAG] upsertUserBasicProfile response:", up);
 
       if (!up.ok) {
         if (up.reason === "no_session") {
@@ -745,6 +811,8 @@ export default function ProfileAndSkillsPage() {
     })();
 
     // 2) Keep existing best-effort full profile+skills sync (other tables).
+    // eslint-disable-next-line no-console
+    console.log("[DIAG] saveProfile -> calling persistToSupabaseBestEffort(nextProfile, state.skills)");
     void persistToSupabaseBestEffort(nextProfile, state.skills);
   };
 
