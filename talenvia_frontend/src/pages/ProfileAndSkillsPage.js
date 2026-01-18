@@ -66,11 +66,22 @@ export default function ProfileAndSkillsPage() {
     prefEmploymentType: "",
   });
 
+  // RESUME (UI-only, but editable section should still have Save/Cancel semantics)
+  // Persist in profile.resume (object) so it behaves like other sections in preview mode.
+  const [resumeDraft, setResumeDraft] = useState(() => ({
+    fileName: state.profile.resume?.fileName || "",
+    // Store as string for preview (no actual upload); allow a link if user wants to paste one.
+    link: state.profile.resume?.link || "",
+  }));
+  const [resumeTouched, setResumeTouched] = useState({ fileName: false, link: false });
+
   // KEY SKILLS (persist via AppState skills list)
-  const [newSkill, setNewSkill] = useState("");
+  const [skillsDraft, setSkillsDraft] = useState(() => state.skills.map((s) => ({ ...s })));
+  const [newSkillDraft, setNewSkillDraft] = useState("");
+  const [skillsTouched, setSkillsTouched] = useState({ newSkill: false });
   const existingSkillNamesLower = useMemo(
-    () => new Set(state.skills.map((s) => String(s.name || "").toLowerCase())),
-    [state.skills]
+    () => new Set(skillsDraft.map((s) => String(s.name || "").toLowerCase())),
+    [skillsDraft]
   );
 
   // LANGUAGES (persisted locally into profile.languages as a string; UI-only but saved to local state like other sections)
@@ -163,6 +174,24 @@ export default function ProfileAndSkillsPage() {
     // Bio optional but keep it reasonable if present
     if (draft.bio && draft.bio.trim().length > 800) {
       next.bio = "Summary is too long (max 800 characters).";
+    }
+
+    return next;
+  };
+
+  const validateResume = (draft) => {
+    const next = { resumeFileName: "", resumeLink: "" };
+
+    const fileName = String(draft.fileName || "").trim();
+    const link = String(draft.link || "").trim();
+
+    if (!fileName) next.resumeFileName = "Resume file name is required (preview mode).";
+    if (fileName.length > 120) next.resumeFileName = "File name is too long (max 120 characters).";
+
+    if (link) {
+      if (link.length > 300) next.resumeLink = "Link is too long (max 300 characters).";
+      // Minimal URL check (allow http(s))
+      if (!/^https?:\/\/\S+$/i.test(link)) next.resumeLink = "Please enter a valid URL starting with http:// or https://";
     }
 
     return next;
@@ -349,26 +378,83 @@ export default function ProfileAndSkillsPage() {
     });
   };
 
-  const addSkill = () => {
-    // Mark as touched to show inline error if invalid
-    markTouched("newSkill");
+  const addSkillDraft = () => {
+    setSkillsTouched((p) => ({ ...p, newSkill: true }));
 
-    const err = validateNewSkill(newSkill);
+    const err = validateNewSkill(newSkillDraft);
     setErrors((p) => ({ ...p, newSkill: err }));
-
     if (err) return;
 
-    const name = newSkill.trim();
-
-    // The user-provided component does not include a level; we default to Intermediate.
-    actions.addSkill({ name, level: "Intermediate" });
-    setNewSkill("");
-    setTouched((p) => ({ ...p, newSkill: false }));
+    const name = newSkillDraft.trim();
+    setSkillsDraft((prev) => [{ name, level: "Intermediate" }, ...prev]);
+    setNewSkillDraft("");
+    setSkillsTouched((p) => ({ ...p, newSkill: false }));
     setErrors((p) => ({ ...p, newSkill: "" }));
   };
 
-  const removeSkill = (skillName) => {
-    actions.removeSkill(skillName);
+  const removeSkillDraft = (skillName) => {
+    setSkillsDraft((prev) => prev.filter((s) => s.name !== skillName));
+  };
+
+  const saveSkills = () => {
+    // Commit draft to global state.
+    // We don't have a bulk setter; so we reconcile via remove+add to preserve AppState structure.
+    const nextNames = new Set(skillsDraft.map((s) => s.name));
+    const currentNames = new Set(state.skills.map((s) => s.name));
+
+    // Remove skills that no longer exist in draft
+    state.skills.forEach((s) => {
+      if (!nextNames.has(s.name)) actions.removeSkill(s.name);
+    });
+
+    // Add skills that exist in draft but not in global state
+    skillsDraft.forEach((s) => {
+      if (!currentNames.has(s.name)) actions.addSkill({ name: s.name, level: s.level || "Intermediate" });
+    });
+
+    // Note: If user changed levels, we don't currently support editing skill levels in AppState.
+    // Keep UI consistent by syncing the draft back to the (possibly updated) global list.
+    setSkillsDraft(state.skills.map((s) => ({ ...s })));
+  };
+
+  const resetSkills = () => {
+    setSkillsDraft(state.skills.map((s) => ({ ...s })));
+    setNewSkillDraft("");
+    setSkillsTouched({ newSkill: false });
+    setErrors((p) => ({ ...p, newSkill: "" }));
+  };
+
+  const saveResume = () => {
+    setResumeTouched({ fileName: true, link: true });
+
+    const nextErrors = validateResume(resumeDraft);
+    setErrors((p) => ({ ...p, ...nextErrors }));
+
+    const hasAnyError = Object.values(nextErrors).some(Boolean);
+    if (hasAnyError) {
+      actions.pushToast({
+        type: "error",
+        title: "Please fix the highlighted fields",
+        description: "Resume details are missing or invalid.",
+      });
+      return;
+    }
+
+    actions.updateProfile({
+      resume: {
+        fileName: String(resumeDraft.fileName || "").trim(),
+        link: String(resumeDraft.link || "").trim(),
+      },
+    });
+  };
+
+  const resetResume = () => {
+    setResumeDraft({
+      fileName: state.profile.resume?.fileName || "",
+      link: state.profile.resume?.link || "",
+    });
+    setResumeTouched({ fileName: false, link: false });
+    setErrors((p) => ({ ...p, resumeFileName: "", resumeLink: "" }));
   };
 
   const saveProfile = () => {
@@ -765,139 +851,228 @@ export default function ProfileAndSkillsPage() {
         />
 
         {/* RESUME */}
-        <div className="card full">
-          <h4>Resume</h4>
-          <p style={{ margin: "6px 0 0", color: "var(--muted)" }}>
-            Resume upload is UI-only in this preview build.
-          </p>
+        <EditableSection
+          title="Resume"
+          viewContent={
+            <div className="grid" style={{ gridTemplateColumns: "repeat(12, 1fr)", gap: 12 }}>
+              <div className="card third" style={{ gridColumn: "span 4" }}>
+                <h4 style={{ marginTop: 0 }}>File name</h4>
+                <p style={{ color: "var(--muted)" }}>{state.profile.resume?.fileName || "—"}</p>
+              </div>
 
-          <div className="row" style={{ marginTop: 12 }}>
-            <input type="file" aria-label="Upload resume file" />
-            <button
-              className="primary-btn"
-              type="button"
-              onClick={() =>
-                actions.pushToast({
-                  type: "info",
-                  title: "Resume upload (preview)",
-                  description: "File upload is not wired to a backend yet.",
-                })
-              }
-            >
-              Upload
-            </button>
-            <button
-              className="btn"
-              type="button"
-              onClick={() =>
-                actions.pushToast({
-                  type: "info",
-                  title: "Replace resume (preview)",
-                  description: "Connect a backend endpoint to store resumes.",
-                })
-              }
-            >
-              Replace
-            </button>
-            <button
-              className="btn danger"
-              type="button"
-              onClick={() =>
-                actions.pushToast({
-                  type: "info",
-                  title: "Delete resume (preview)",
-                  description: "Connect a backend endpoint to delete stored resumes.",
-                })
-              }
-            >
-              Delete
-            </button>
-          </div>
-        </div>
+              <div className="card third" style={{ gridColumn: "span 8" }}>
+                <h4 style={{ marginTop: 0 }}>Link</h4>
+                {state.profile.resume?.link ? (
+                  <p style={{ margin: 0 }}>
+                    <a href={state.profile.resume.link} target="_blank" rel="noreferrer" className="btn">
+                      Open resume link
+                    </a>
+                  </p>
+                ) : (
+                  <p style={{ color: "var(--muted)" }}>—</p>
+                )}
+              </div>
+
+              <div className="card full" style={{ gridColumn: "1 / -1" }}>
+                <p style={{ margin: 0, color: "var(--muted)" }}>
+                  Preview mode: this does not upload files. Save stores a file name + optional link locally; Cancel reverts.
+                </p>
+              </div>
+            </div>
+          }
+          editContent={
+            <>
+              <p style={{ margin: "6px 0 0", color: "var(--muted)" }}>
+                In this preview, enter a resume file name and optionally a public link (Google Drive, portfolio site, etc.).
+              </p>
+
+              <div className="row" style={{ marginTop: 10 }}>
+                <div className="field">
+                  <label htmlFor="ps-resume-filename">Resume file name</label>
+                  <input
+                    id="ps-resume-filename"
+                    className={getInputClassName("resumeFileName")}
+                    placeholder="e.g. Aisha_Rahman_Resume.pdf"
+                    value={resumeDraft.fileName}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setResumeDraft((p) => ({ ...p, fileName: v }));
+                      if (resumeTouched.fileName) {
+                        const next = validateResume({ ...resumeDraft, fileName: v });
+                        setErrors((p) => ({ ...p, resumeFileName: next.resumeFileName }));
+                      }
+                    }}
+                    onBlur={() => {
+                      setResumeTouched((p) => ({ ...p, fileName: true }));
+                      const next = validateResume(resumeDraft);
+                      setErrors((p) => ({ ...p, resumeFileName: next.resumeFileName }));
+                    }}
+                    aria-invalid={Boolean(resumeTouched.fileName && errors.resumeFileName)}
+                    aria-describedby={resumeTouched.fileName && errors.resumeFileName ? errorId("resumeFileName") : undefined}
+                  />
+                  {resumeTouched.fileName && errors.resumeFileName ? (
+                    <p className="field-error" id={errorId("resumeFileName")}>
+                      {errors.resumeFileName}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="field">
+                  <label htmlFor="ps-resume-link">Resume link (optional)</label>
+                  <input
+                    id="ps-resume-link"
+                    className={getInputClassName("resumeLink")}
+                    placeholder="https://..."
+                    value={resumeDraft.link}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setResumeDraft((p) => ({ ...p, link: v }));
+                      if (resumeTouched.link) {
+                        const next = validateResume({ ...resumeDraft, link: v });
+                        setErrors((p) => ({ ...p, resumeLink: next.resumeLink }));
+                      }
+                    }}
+                    onBlur={() => {
+                      setResumeTouched((p) => ({ ...p, link: true }));
+                      const next = validateResume(resumeDraft);
+                      setErrors((p) => ({ ...p, resumeLink: next.resumeLink }));
+                    }}
+                    aria-invalid={Boolean(resumeTouched.link && errors.resumeLink)}
+                    aria-describedby={resumeTouched.link && errors.resumeLink ? errorId("resumeLink") : undefined}
+                  />
+                  {resumeTouched.link && errors.resumeLink ? (
+                    <p className="field-error" id={errorId("resumeLink")}>
+                      {errors.resumeLink}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            </>
+          }
+          onSave={saveResume}
+          onCancel={resetResume}
+        />
 
         {/* KEY SKILLS */}
-        <div className="card full">
-          <h4>Key Skills</h4>
-
-          <div className="row" style={{ marginTop: 10 }}>
-            <div className="field" style={{ flex: 1, minWidth: 260 }}>
-              <label htmlFor="ps-new-skill">Add skill</label>
-              <input
-                id="ps-new-skill"
-                className={getInputClassName("newSkill")}
-                placeholder="Add skill"
-                value={newSkill}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setNewSkill(v);
-
-                  // Live validate after the user has interacted with the field.
-                  if (touched.newSkill) {
-                    setErrors((p) => ({ ...p, newSkill: validateNewSkill(v) }));
-                  }
-                }}
-                onBlur={() => {
-                  markTouched("newSkill");
-                  setErrors((p) => ({ ...p, newSkill: validateNewSkill(newSkill) }));
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    addSkill();
-                  }
-                }}
-                aria-invalid={Boolean(touched.newSkill && errors.newSkill)}
-                aria-describedby={touched.newSkill && errors.newSkill ? errorId("newSkill") : undefined}
-              />
-              {touched.newSkill && errors.newSkill ? (
-                <p className="field-error" id={errorId("newSkill")}>
-                  {errors.newSkill}
+        <EditableSection
+          title="Key Skills"
+          viewContent={
+            <div>
+              <div className="row" style={{ justifyContent: "space-between", marginTop: 6 }}>
+                <p style={{ margin: 0, color: "var(--muted)" }}>
+                  Keep your skills list accurate and focused. Save applies changes; Cancel discards edits.
                 </p>
-              ) : null}
-            </div>
-
-            <button className="primary-btn" type="button" onClick={addSkill}>
-              Add
-            </button>
-
-            <span className="badge" style={{ marginLeft: "auto" }}>
-              {state.skills.length} skills
-            </span>
-          </div>
-
-          <div className="row" style={{ marginTop: 12 }}>
-            {state.skills.map((s) => (
-              <span
-                key={s.name}
-                className="badge"
-                style={{
-                  borderColor: "rgba(124,58,237,0.22)",
-                  background: "rgba(124,58,237,0.08)",
-                }}
-              >
-                <span style={{ fontWeight: 800 }}>{s.name}</span>
-                <span className="pill" style={{ background: "rgba(13,148,136,0.92)" }}>
-                  {s.level || "Intermediate"}
-                </span>
-                <button
-                  className="btn danger"
-                  type="button"
-                  onClick={() => removeSkill(s.name)}
-                  aria-label={`Remove ${s.name}`}
-                  style={{ padding: "6px 10px", borderRadius: 999 }}
-                >
-                  ✕
-                </button>
-              </span>
-            ))}
-            {state.skills.length === 0 ? (
-              <div className="card full">
-                <h4>No skills yet</h4>
-                <p>Add your first skill to start building a strong profile.</p>
+                <span className="badge">{state.skills.length} skills</span>
               </div>
-            ) : null}
-          </div>
-        </div>
+
+              <div className="row" style={{ marginTop: 12 }}>
+                {state.skills.map((s) => (
+                  <span
+                    key={s.name}
+                    className="badge"
+                    style={{
+                      borderColor: "rgba(124,58,237,0.22)",
+                      background: "rgba(124,58,237,0.08)",
+                    }}
+                  >
+                    <span style={{ fontWeight: 800 }}>{s.name}</span>
+                    <span className="pill" style={{ background: "rgba(13,148,136,0.92)" }}>
+                      {s.level || "Intermediate"}
+                    </span>
+                  </span>
+                ))}
+                {state.skills.length === 0 ? (
+                  <div className="card full">
+                    <h4>No skills yet</h4>
+                    <p>Add your first skill to start building a strong profile.</p>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          }
+          editContent={
+            <>
+              <div className="row" style={{ marginTop: 10 }}>
+                <div className="field" style={{ flex: 1, minWidth: 260 }}>
+                  <label htmlFor="ps-new-skill-draft">Add skill</label>
+                  <input
+                    id="ps-new-skill-draft"
+                    className={getInputClassName("newSkill")}
+                    placeholder="e.g. React, Node.js, SQL"
+                    value={newSkillDraft}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setNewSkillDraft(v);
+                      if (skillsTouched.newSkill) {
+                        setErrors((p) => ({ ...p, newSkill: validateNewSkill(v) }));
+                      }
+                    }}
+                    onBlur={() => {
+                      setSkillsTouched((p) => ({ ...p, newSkill: true }));
+                      setErrors((p) => ({ ...p, newSkill: validateNewSkill(newSkillDraft) }));
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addSkillDraft();
+                      }
+                    }}
+                    aria-invalid={Boolean(skillsTouched.newSkill && errors.newSkill)}
+                    aria-describedby={skillsTouched.newSkill && errors.newSkill ? errorId("newSkill") : undefined}
+                  />
+                  {skillsTouched.newSkill && errors.newSkill ? (
+                    <p className="field-error" id={errorId("newSkill")}>
+                      {errors.newSkill}
+                    </p>
+                  ) : null}
+                </div>
+
+                <button className="primary-btn" type="button" onClick={addSkillDraft}>
+                  Add
+                </button>
+
+                <span className="badge" style={{ marginLeft: "auto" }}>
+                  {skillsDraft.length} in draft
+                </span>
+              </div>
+
+              <div className="row" style={{ marginTop: 12 }}>
+                {skillsDraft.map((s) => (
+                  <span
+                    key={s.name}
+                    className="badge"
+                    style={{
+                      borderColor: "rgba(124,58,237,0.22)",
+                      background: "rgba(124,58,237,0.08)",
+                    }}
+                  >
+                    <span style={{ fontWeight: 800 }}>{s.name}</span>
+                    <span className="pill" style={{ background: "rgba(13,148,136,0.92)" }}>
+                      {s.level || "Intermediate"}
+                    </span>
+                    <button
+                      className="btn danger"
+                      type="button"
+                      onClick={() => removeSkillDraft(s.name)}
+                      aria-label={`Remove ${s.name}`}
+                      style={{ padding: "6px 10px", borderRadius: 999 }}
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
+                {skillsDraft.length === 0 ? (
+                  <div className="card full">
+                    <h4>No skills in draft</h4>
+                    <p>Add a skill above, then Save to apply changes.</p>
+                  </div>
+                ) : null}
+              </div>
+            </>
+          }
+          onSave={saveSkills}
+          onCancel={resetSkills}
+        />
 
         {/* PROJECTS */}
         <EditableSection
