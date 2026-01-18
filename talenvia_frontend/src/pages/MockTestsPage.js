@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useAppState } from "../state/AppState";
 import Modal from "../components/Modal";
 
@@ -33,15 +33,6 @@ function minutesFromTitle(title) {
   return Number.isFinite(n) ? n : null;
 }
 
-function useDebouncedValue(value, delayMs) {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const id = window.setTimeout(() => setDebounced(value), delayMs);
-    return () => window.clearTimeout(id);
-  }, [value, delayMs]);
-  return debounced;
-}
-
 // PUBLIC_INTERFACE
 export default function MockTestsPage() {
   /** Mock tests page for practice and confidence building. */
@@ -51,10 +42,6 @@ export default function MockTestsPage() {
 
   const [category, setCategory] = useState("All");
   const [difficulty, setDifficulty] = useState("All");
-  const [q, setQ] = useState("");
-
-  // Debounce just the search text to avoid re-filtering on every keystroke.
-  const qDebounced = useDebouncedValue(q, 120);
 
   const testsEnriched = useMemo(() => {
     return state.mockTests.map((t) => {
@@ -83,14 +70,12 @@ export default function MockTestsPage() {
   }, [testsEnriched]);
 
   const filteredTests = useMemo(() => {
-    const query = qDebounced.trim().toLowerCase();
     return testsEnriched.filter((t) => {
       const okCategory = category === "All" ? true : t._derivedCategory === category;
       const okDifficulty = difficulty === "All" ? true : t._derivedDifficulty === difficulty;
-      const okQuery = !query ? true : String(t.title || "").toLowerCase().includes(query);
-      return okCategory && okDifficulty && okQuery;
+      return okCategory && okDifficulty;
     });
-  }, [testsEnriched, category, difficulty, qDebounced]);
+  }, [testsEnriched, category, difficulty]);
 
   const activeTest = useMemo(() => state.mockTests.find((t) => t.id === active) || null, [active, state.mockTests]);
 
@@ -103,17 +88,6 @@ export default function MockTestsPage() {
 
       <div className="card full" style={{ marginBottom: 12 }}>
         <div className="row">
-          <div className="field">
-            <label htmlFor="mt-q">Search</label>
-            <input
-              id="mt-q"
-              className="input"
-              placeholder="Search by title (e.g., React, CSS, System Design)"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-          </div>
-
           <div className="field">
             <label htmlFor="mt-category">Category</label>
             <select
@@ -151,7 +125,6 @@ export default function MockTestsPage() {
               className="btn"
               type="button"
               onClick={() => {
-                setQ("");
                 setCategory("All");
                 setDifficulty("All");
               }}
@@ -245,15 +218,13 @@ export default function MockTestsPage() {
           <div className="card full">
             <h4>No results</h4>
             <p>
-              Try clearing filters or changing your search. Your mock tests are stored locally via{" "}
-              <code>localStorage</code>.
+              Try clearing filters. Your mock tests are stored locally via <code>localStorage</code>.
             </p>
             <div className="row" style={{ justifyContent: "flex-end", marginTop: 10 }}>
               <button
                 className="btn"
                 type="button"
                 onClick={() => {
-                  setQ("");
                   setCategory("All");
                   setDifficulty("All");
                 }}
@@ -274,10 +245,7 @@ export default function MockTestsPage() {
       </div>
 
       {activeTest ? (
-        <Modal
-          title={`Mock Test • ${activeTest.title}`}
-          onClose={() => setActive(null)}
-        >
+        <Modal title={`Mock Test • ${activeTest.title}`} onClose={() => setActive(null)}>
           <div className="card full" style={{ border: "none", boxShadow: "none", padding: 0, background: "transparent" }}>
             <h4 style={{ marginTop: 0 }}>Simulated attempt</h4>
             <p style={{ color: "var(--muted)" }}>
