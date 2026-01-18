@@ -261,6 +261,14 @@ button, input, select, textarea { font-family: inherit; }
   grid-template-columns: 1fr;
 }
 
+/* In desktop layout, when sidebar is closed the sidebar element must not consume layout space
+   or affect main content visibility. (Mobile drawer mode is handled in the 860px media query.) */
+@media (min-width: 861px) {
+  .shell-body.sidebar-closed .sidebar {
+    display: none;
+  }
+}
+
 /* Sidebar hamburger (3 lines) */
 .hamburger {
   padding: 10px 12px;
