@@ -27,6 +27,17 @@ Launches the test runner in interactive watch mode.
 Builds the app for production to the `build` folder.\
 It correctly bundles React in production mode and optimizes the build for the best performance.
 
+## Environment variables
+
+Create React App exposes variables prefixed with `REACT_APP_` at build time.
+
+Supabase (optional):
+
+- `REACT_APP_SUPABASE_URL` - your Supabase project URL
+- `REACT_APP_SUPABASE_ANON_KEY` - your Supabase anon/public key
+
+If these are not provided, the app will continue to work without Supabase (the integration is scaffold-only).
+
 ## Customization
 
 ### Colors

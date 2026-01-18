@@ -14,6 +14,7 @@ import SettingsPage from "./pages/SettingsPage";
 import AboutPage from "./pages/AboutPage";
 import HowItWorksPage from "./pages/HowItWorksPage";
 import SearchResultsPage from "./pages/SearchResultsPage";
+import { supabaseHealthCheck } from "./utils/supabaseHelpers";
 
 /**
  * Talenvia React Frontend
@@ -231,6 +232,31 @@ function Shell() {
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", state.settings.theme || "light");
   }, [state.settings.theme]);
+
+  // Non-blocking Supabase check (scaffold only; does not change any features/routes/UI).
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const res = await supabaseHealthCheck();
+
+      // Only show a small toast when configured + reachable.
+      if (!cancelled && res.ok) {
+        actions.pushToast({
+          type: "success",
+          title: "Supabase connected",
+          description: res.hasSession ? "Session detected." : "No session (ready).",
+          ttlMs: 1800,
+        });
+      }
+    })().catch(() => {
+      // Intentionally swallow all errors (do not break app and avoid noisy UI).
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [actions]);
 
   // Keep the sidebar default in sync with viewport:
   // - When resizing to desktop => open

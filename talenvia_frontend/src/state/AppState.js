@@ -192,7 +192,7 @@ function AppStateProviderInner({ children }) {
       // PUBLIC_INTERFACE
       pushToast,
     };
-  }, []);
+  }, [navigate]);
 
   const value = useMemo(
     () => ({ state, setState, actions, toasts, globalSearchQuery }),
