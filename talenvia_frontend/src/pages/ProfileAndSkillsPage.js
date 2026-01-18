@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useAppState } from "../state/AppState";
+import EditableSection from "../components/EditableSection";
 
 /**
  * This page is the unified Profile & Skills screen.
@@ -225,107 +226,170 @@ export default function ProfileAndSkillsPage() {
       </p>
 
       <div className="grid">
-        {/* BASIC DETAILS */}
-        <div className="card full">
-          <h4>Basic Details</h4>
+        <EditableSection
+          title="Profile"
+          viewContent={
+            <div className="grid" style={{ gridTemplateColumns: "repeat(12, 1fr)", gap: 12 }}>
+              <div className="card third" style={{ gridColumn: "span 4" }}>
+                <h4 style={{ marginTop: 0 }}>Full name</h4>
+                <p>{state.profile.fullName || "—"}</p>
+              </div>
 
-          <div className="row" style={{ marginTop: 10 }}>
-            <div className="field">
-              <label htmlFor="ps-fullname">Full Name</label>
-              <input
-                id="ps-fullname"
-                className={getInputClassName("fullName")}
-                placeholder="Full Name"
-                value={profileDraft.fullName}
-                onChange={(e) => updateProfileField("fullName", e.target.value)}
-                onBlur={() => {
-                  markTouched("fullName");
-                  const next = validateProfile(profileDraft);
-                  setErrors((p) => ({ ...p, fullName: next.fullName }));
-                }}
-                aria-invalid={Boolean(touched.fullName && errors.fullName)}
-                aria-describedby={touched.fullName && errors.fullName ? errorId("fullName") : undefined}
-              />
-              {touched.fullName && errors.fullName ? (
-                <p className="field-error" id={errorId("fullName")}>
-                  {errors.fullName}
-                </p>
-              ) : null}
-            </div>
+              <div className="card third" style={{ gridColumn: "span 4" }}>
+                <h4 style={{ marginTop: 0 }}>Email</h4>
+                <p>{state.profile.email || "—"}</p>
+              </div>
 
-            <div className="field">
-              <label htmlFor="ps-email">Email</label>
-              <input
-                id="ps-email"
-                className={getInputClassName("email")}
-                type="email"
-                placeholder="Email"
-                value={profileDraft.email}
-                onChange={(e) => updateProfileField("email", e.target.value)}
-                onBlur={() => {
-                  markTouched("email");
-                  const next = validateProfile(profileDraft);
-                  setErrors((p) => ({ ...p, email: next.email }));
-                }}
-                aria-invalid={Boolean(touched.email && errors.email)}
-                aria-describedby={touched.email && errors.email ? errorId("email") : undefined}
-              />
-              {touched.email && errors.email ? (
-                <p className="field-error" id={errorId("email")}>
-                  {errors.email}
-                </p>
-              ) : null}
-            </div>
-          </div>
+              <div className="card third" style={{ gridColumn: "span 4" }}>
+                <h4 style={{ marginTop: 0 }}>Location</h4>
+                <p>{state.profile.location || "—"}</p>
+              </div>
 
-          <div className="row" style={{ marginTop: 10 }}>
-            <div className="field">
-              <label htmlFor="ps-phone">Phone Number</label>
-              <input
-                id="ps-phone"
-                className={getInputClassName("phone")}
-                placeholder="Phone Number"
-                value={profileDraft.phone}
-                onChange={(e) => updateProfileField("phone", e.target.value)}
-                onBlur={() => {
-                  markTouched("phone");
-                  const next = validateProfile(profileDraft);
-                  setErrors((p) => ({ ...p, phone: next.phone }));
-                }}
-                aria-invalid={Boolean(touched.phone && errors.phone)}
-                aria-describedby={touched.phone && errors.phone ? errorId("phone") : undefined}
-              />
-              {touched.phone && errors.phone ? (
-                <p className="field-error" id={errorId("phone")}>
-                  {errors.phone}
-                </p>
-              ) : null}
-            </div>
+              <div className="card third" style={{ gridColumn: "span 4" }}>
+                <h4 style={{ marginTop: 0 }}>Phone</h4>
+                <p>{state.profile.phone || "—"}</p>
+              </div>
 
-            <div className="field">
-              <label htmlFor="ps-location">Location</label>
-              <input
-                id="ps-location"
-                className={getInputClassName("location")}
-                placeholder="Location"
-                value={profileDraft.location}
-                onChange={(e) => updateProfileField("location", e.target.value)}
-                onBlur={() => {
-                  markTouched("location");
-                  const next = validateProfile(profileDraft);
-                  setErrors((p) => ({ ...p, location: next.location }));
-                }}
-                aria-invalid={Boolean(touched.location && errors.location)}
-                aria-describedby={touched.location && errors.location ? errorId("location") : undefined}
-              />
-              {touched.location && errors.location ? (
-                <p className="field-error" id={errorId("location")}>
-                  {errors.location}
-                </p>
-              ) : null}
+              <div className="card full" style={{ gridColumn: "1 / -1" }}>
+                <h4 style={{ marginTop: 0 }}>Summary</h4>
+                <p style={{ color: "var(--muted)" }}>{state.profile.bio || "Add a short summary to strengthen your profile."}</p>
+              </div>
             </div>
-          </div>
-        </div>
+          }
+          editContent={
+            <>
+              {/* BASIC DETAILS (edit) */}
+              <div className="row" style={{ marginTop: 10 }}>
+                <div className="field">
+                  <label htmlFor="ps-fullname">Full Name</label>
+                  <input
+                    id="ps-fullname"
+                    className={getInputClassName("fullName")}
+                    placeholder="Full Name"
+                    value={profileDraft.fullName}
+                    onChange={(e) => updateProfileField("fullName", e.target.value)}
+                    onBlur={() => {
+                      markTouched("fullName");
+                      const next = validateProfile(profileDraft);
+                      setErrors((p) => ({ ...p, fullName: next.fullName }));
+                    }}
+                    aria-invalid={Boolean(touched.fullName && errors.fullName)}
+                    aria-describedby={touched.fullName && errors.fullName ? errorId("fullName") : undefined}
+                  />
+                  {touched.fullName && errors.fullName ? (
+                    <p className="field-error" id={errorId("fullName")}>
+                      {errors.fullName}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="field">
+                  <label htmlFor="ps-email">Email</label>
+                  <input
+                    id="ps-email"
+                    className={getInputClassName("email")}
+                    type="email"
+                    placeholder="Email"
+                    value={profileDraft.email}
+                    onChange={(e) => updateProfileField("email", e.target.value)}
+                    onBlur={() => {
+                      markTouched("email");
+                      const next = validateProfile(profileDraft);
+                      setErrors((p) => ({ ...p, email: next.email }));
+                    }}
+                    aria-invalid={Boolean(touched.email && errors.email)}
+                    aria-describedby={touched.email && errors.email ? errorId("email") : undefined}
+                  />
+                  {touched.email && errors.email ? (
+                    <p className="field-error" id={errorId("email")}>
+                      {errors.email}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="row" style={{ marginTop: 10 }}>
+                <div className="field">
+                  <label htmlFor="ps-phone">Phone Number</label>
+                  <input
+                    id="ps-phone"
+                    className={getInputClassName("phone")}
+                    placeholder="Phone Number"
+                    value={profileDraft.phone}
+                    onChange={(e) => updateProfileField("phone", e.target.value)}
+                    onBlur={() => {
+                      markTouched("phone");
+                      const next = validateProfile(profileDraft);
+                      setErrors((p) => ({ ...p, phone: next.phone }));
+                    }}
+                    aria-invalid={Boolean(touched.phone && errors.phone)}
+                    aria-describedby={touched.phone && errors.phone ? errorId("phone") : undefined}
+                  />
+                  {touched.phone && errors.phone ? (
+                    <p className="field-error" id={errorId("phone")}>
+                      {errors.phone}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="field">
+                  <label htmlFor="ps-location">Location</label>
+                  <input
+                    id="ps-location"
+                    className={getInputClassName("location")}
+                    placeholder="Location"
+                    value={profileDraft.location}
+                    onChange={(e) => updateProfileField("location", e.target.value)}
+                    onBlur={() => {
+                      markTouched("location");
+                      const next = validateProfile(profileDraft);
+                      setErrors((p) => ({ ...p, location: next.location }));
+                    }}
+                    aria-invalid={Boolean(touched.location && errors.location)}
+                    aria-describedby={touched.location && errors.location ? errorId("location") : undefined}
+                  />
+                  {touched.location && errors.location ? (
+                    <p className="field-error" id={errorId("location")}>
+                      {errors.location}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+
+              {/* PROFILE SUMMARY (edit) */}
+              <div className="row" style={{ marginTop: 10 }}>
+                <div className="field" style={{ minWidth: "100%" }}>
+                  <label htmlFor="ps-summary">Summary</label>
+                  <textarea
+                    id="ps-summary"
+                    rows={4}
+                    className={getTextareaClassName("bio")}
+                    placeholder="Write a short professional summary..."
+                    value={profileDraft.bio}
+                    onChange={(e) => updateProfileField("bio", e.target.value)}
+                    onBlur={() => {
+                      markTouched("bio");
+                      const next = validateProfile(profileDraft);
+                      setErrors((p) => ({ ...p, bio: next.bio }));
+                    }}
+                    aria-invalid={Boolean(touched.bio && errors.bio)}
+                    aria-describedby={touched.bio && errors.bio ? errorId("bio") : undefined}
+                  />
+                  {touched.bio && errors.bio ? (
+                    <p className="field-error" id={errorId("bio")}>
+                      {errors.bio}
+                    </p>
+                  ) : null}
+                  <p style={{ margin: "6px 0 0", color: "var(--muted)", fontSize: 12 }}>
+                    {profileDraft.bio.trim().length}/800
+                  </p>
+                </div>
+              </div>
+            </>
+          }
+          onSave={saveProfile}
+          onCancel={resetProfile}
+        />
 
         {/* RESUME */}
         <div className="card full">
@@ -375,40 +439,6 @@ export default function ProfileAndSkillsPage() {
             >
               Delete
             </button>
-          </div>
-        </div>
-
-        {/* PROFILE SUMMARY */}
-        <div className="card full">
-          <h4>Profile Summary</h4>
-
-          <div className="row" style={{ marginTop: 10 }}>
-            <div className="field" style={{ minWidth: "100%" }}>
-              <label htmlFor="ps-summary">Summary</label>
-              <textarea
-                id="ps-summary"
-                rows={4}
-                className={getTextareaClassName("bio")}
-                placeholder="Write a short professional summary..."
-                value={profileDraft.bio}
-                onChange={(e) => updateProfileField("bio", e.target.value)}
-                onBlur={() => {
-                  markTouched("bio");
-                  const next = validateProfile(profileDraft);
-                  setErrors((p) => ({ ...p, bio: next.bio }));
-                }}
-                aria-invalid={Boolean(touched.bio && errors.bio)}
-                aria-describedby={touched.bio && errors.bio ? errorId("bio") : undefined}
-              />
-              {touched.bio && errors.bio ? (
-                <p className="field-error" id={errorId("bio")}>
-                  {errors.bio}
-                </p>
-              ) : null}
-              <p style={{ margin: "6px 0 0", color: "var(--muted)", fontSize: 12 }}>
-                {profileDraft.bio.trim().length}/800
-              </p>
-            </div>
           </div>
         </div>
 
@@ -612,17 +642,6 @@ export default function ProfileAndSkillsPage() {
           </div>
         </div>
 
-        {/* ACTIONS */}
-        <div className="card full">
-          <div className="row" style={{ justifyContent: "flex-end" }}>
-            <button className="btn" type="button" onClick={resetProfile}>
-              Reset
-            </button>
-            <button className="primary-btn" type="button" onClick={saveProfile} style={{ minWidth: 220 }}>
-              Save Profile
-            </button>
-          </div>
-        </div>
       </div>
     </section>
   );
