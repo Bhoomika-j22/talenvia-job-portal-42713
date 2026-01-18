@@ -21,13 +21,13 @@ export async function insertUserRow({ name, email, phone_number, profile_photo_u
   /**
    * Inserts a row into `public.users` and returns the inserted row.
    *
-   * RLS notes:
-   * - This function assumes an authenticated session if your policies require it.
-   * - It does NOT set `id` so the DB can default it to UUID (gen_random_uuid()).
-   * - If your RLS policy expects `id = auth.uid()` on insert, then the insert will fail unless:
-   *   (a) the table's PK is `id = auth.uid()` (not default), or
-   *   (b) you provide `id` explicitly, or
-   *   (c) you use a server-side RPC/service role.
+   * RLS notes (current Talenvia setup):
+   * - `public.users.id` defaults to `auth.uid()`
+   * - RLS policy enforces `WITH CHECK (id = auth.uid())` on INSERT
+   *
+   * Therefore:
+   * - You MUST be authenticated
+   * - You SHOULD omit `id` and let the database populate it with `auth.uid()`
    *
    * Returns (safe-by-default, never throws):
    * - { ok: true, data: object }
@@ -43,7 +43,7 @@ export async function insertUserRow({ name, email, phone_number, profile_photo_u
       email: safeTrim(email) || null,
       phone_number: normalizeNullable(phone_number),
       profile_photo_url: normalizeNullable(profile_photo_url),
-      // no `id` here on purpose (UUID default)
+      // IMPORTANT: omit `id` so it defaults to auth.uid()
     };
 
     const { data, error } = await supabase.from("users").insert(row).select("*").single();
@@ -63,6 +63,41 @@ export async function insertUserRow({ name, email, phone_number, profile_photo_u
 }
 
 // PUBLIC_INTERFACE
+export async function upsertOwnUserRow({ name, email }) {
+  /**
+   * Recommended way to "create profile row if missing, otherwise update".
+   *
+   * This calls the Postgres function:
+   * - public.talenvia_upsert_own_user(p_name text, p_email text)
+   *
+   * Returns:
+   * - { ok: true, data: object }  // the users row
+   * - { ok: false, reason: 'not_configured' | 'error', error?: { message } }
+   */
+  if (!isSupabaseConfigured() || !supabase) {
+    return { ok: false, reason: "not_configured" };
+  }
+
+  try {
+    const { data, error } = await supabase.rpc("talenvia_upsert_own_user", {
+      p_name: safeTrim(name) || null,
+      p_email: safeTrim(email) || null,
+    });
+
+    if (error) {
+      return { ok: false, reason: "error", error: { message: error.message } };
+    }
+
+    return { ok: true, data };
+  } catch (e) {
+    return {
+      ok: false,
+      reason: "error",
+      error: { message: e instanceof Error ? e.message : String(e) },
+    };
+  }
+}
+
 export async function demoInsertUserRow() {
   /**
    * Minimal, opt-in demo function for manual testing.
