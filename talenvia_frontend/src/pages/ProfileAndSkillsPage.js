@@ -56,6 +56,8 @@ export default function ProfileAndSkillsPage() {
     bio: "",
     newSkill: "",
 
+    languages: "",
+
     prefLocation: "",
     prefRole: "",
     prefSalary: "",
@@ -70,6 +72,10 @@ export default function ProfileAndSkillsPage() {
     () => new Set(state.skills.map((s) => String(s.name || "").toLowerCase())),
     [state.skills]
   );
+
+  // LANGUAGES (persisted locally into profile.languages as a string; UI-only but saved to local state like other sections)
+  const [languagesDraft, setLanguagesDraft] = useState(() => state.profile.languages || "");
+  const [languagesTouched, setLanguagesTouched] = useState(false);
 
   // CAREER PREFERENCES (UI-only but should still behave like other editable sections)
   const [careerPrefDraft, setCareerPrefDraft] = useState(() => ({
@@ -239,6 +245,28 @@ export default function ProfileAndSkillsPage() {
     if (draft.description.trim().length > 1000) next.projectDescription = "Project description is too long (max 1000 characters).";
 
     return next;
+  };
+
+  const validateLanguages = (value) => {
+    // Expect comma-separated list, minimum 1 language.
+    // Keep permissive characters to allow things like "Portuguese (BR)".
+    const raw = String(value || "").trim();
+    if (!raw) return "Please enter at least one language (comma-separated).";
+    if (raw.length > 120) return "Languages is too long (max 120 characters).";
+
+    const parts = raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    if (parts.length === 0) return "Please enter at least one language.";
+    if (parts.length > 10) return "Please keep it to 10 languages or fewer.";
+    if (parts.some((p) => p.length > 30)) return "Each language should be 30 characters or fewer.";
+
+    // Basic allowed characters: letters, numbers, spaces, common punctuation
+    if (!/^[\p{L}\p{N}\s,.'()/+-]+$/u.test(raw)) return "Languages contains unsupported characters.";
+
+    return "";
   };
 
   const markTouched = (fieldName) => {
@@ -522,6 +550,32 @@ export default function ProfileAndSkillsPage() {
     });
     setProjectTouched({ title: false, description: false });
     setErrors((p) => ({ ...p, projectTitle: "", projectDescription: "" }));
+  };
+
+  const saveLanguages = () => {
+    setLanguagesTouched(true);
+
+    const err = validateLanguages(languagesDraft);
+    setErrors((p) => ({ ...p, languages: err }));
+
+    if (err) {
+      actions.pushToast({
+        type: "error",
+        title: "Please fix the highlighted fields",
+        description: "Languages is missing or invalid.",
+      });
+      return;
+    }
+
+    actions.updateProfile({
+      languages: String(languagesDraft || "").trim(),
+    });
+  };
+
+  const resetLanguages = () => {
+    setLanguagesDraft(state.profile.languages || "");
+    setLanguagesTouched(false);
+    setErrors((p) => ({ ...p, languages: "" }));
   };
 
   return (
@@ -1047,18 +1101,68 @@ export default function ProfileAndSkillsPage() {
         />
 
         {/* LANGUAGES */}
-        <div className="card full">
-          <h4>Languages</h4>
-          <p style={{ margin: "6px 0 0", color: "var(--muted)" }}>
-            Languages are UI-only in this preview.
-          </p>
-          <div className="row" style={{ marginTop: 10 }}>
-            <div className="field">
-              <label htmlFor="ps-languages">Languages</label>
-              <input id="ps-languages" className="input" placeholder="e.g. English, Hindi, Tamil" />
+        <EditableSection
+          title="Languages"
+          viewContent={
+            <div className="grid" style={{ gridTemplateColumns: "repeat(12, 1fr)", gap: 12 }}>
+              <div className="card full" style={{ gridColumn: "1 / -1" }}>
+                <h4 style={{ marginTop: 0 }}>Languages</h4>
+                <p style={{ color: "var(--muted)" }}>
+                  {state.profile.languages?.trim()
+                    ? state.profile.languages
+                    : "Add languages you can speak (comma-separated)."}
+                </p>
+              </div>
+
+              <div className="card full" style={{ gridColumn: "1 / -1" }}>
+                <p style={{ margin: 0, color: "var(--muted)" }}>
+                  Save will persist locally (preview mode). Cancel will revert unsaved changes.
+                </p>
+              </div>
             </div>
-          </div>
-        </div>
+          }
+          editContent={
+            <>
+              <p style={{ margin: "6px 0 0", color: "var(--muted)" }}>
+                Enter a comma-separated list (e.g. English, Hindi, Tamil).
+              </p>
+
+              <div className="row" style={{ marginTop: 10 }}>
+                <div className="field" style={{ minWidth: "100%" }}>
+                  <label htmlFor="ps-languages">Languages</label>
+                  <input
+                    id="ps-languages"
+                    className={getInputClassName("languages")}
+                    placeholder="e.g. English, Hindi, Tamil"
+                    value={languagesDraft}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setLanguagesDraft(v);
+
+                      // Live-validate after interaction
+                      if (languagesTouched) {
+                        setErrors((p) => ({ ...p, languages: validateLanguages(v) }));
+                      }
+                    }}
+                    onBlur={() => {
+                      setLanguagesTouched(true);
+                      setErrors((p) => ({ ...p, languages: validateLanguages(languagesDraft) }));
+                    }}
+                    aria-invalid={Boolean(languagesTouched && errors.languages)}
+                    aria-describedby={languagesTouched && errors.languages ? errorId("languages") : undefined}
+                  />
+                  {languagesTouched && errors.languages ? (
+                    <p className="field-error" id={errorId("languages")}>
+                      {errors.languages}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            </>
+          }
+          onSave={saveLanguages}
+          onCancel={resetLanguages}
+        />
 
         {/* CAREER PREFERENCES */}
         <EditableSection
