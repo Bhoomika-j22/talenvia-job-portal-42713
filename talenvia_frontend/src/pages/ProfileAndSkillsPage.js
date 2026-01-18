@@ -1,7 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useAppState } from "../state/AppState";
 import EditableSection from "../components/EditableSection";
-import { loadProfileAndSkillsFromSupabase, saveProfileAndSkillsToSupabase } from "../utils/profilePersistence";
+import {
+  deleteCareerPreferencesFromSupabase,
+  deleteEducationFromSupabase,
+  deleteLanguagesFromSupabase,
+  deleteProjectsFromSupabase,
+  loadProfileAndSkillsFromSupabase,
+  saveProfileAndSkillsToSupabase,
+} from "../utils/profilePersistence";
 import { uploadOrReplaceResume, deleteResumeByPath } from "../utils/resumeStorage";
 import { updateResumeMetadataInSupabase } from "../utils/resumePersistence";
 
@@ -67,6 +74,37 @@ export default function ProfileAndSkillsPage() {
         ...prev,
         profile: { ...prev.profile, ...incomingProfile },
         skills: incomingSkills.length ? incomingSkills : prev.skills,
+      }));
+
+      // Also hydrate local drafts so the editable sections reflect the cloud state immediately.
+      setProfileDraft((p) => ({
+        ...p,
+        fullName: incomingProfile.fullName ?? p.fullName,
+        email: incomingProfile.email ?? p.email,
+        phone: incomingProfile.phone ?? p.phone,
+        location: incomingProfile.location ?? p.location,
+        bio: incomingProfile.bio ?? p.bio,
+      }));
+      setEducationDraft((p) => ({
+        ...p,
+        tenth: incomingProfile.education?.tenth ?? p.tenth,
+        twelfth: incomingProfile.education?.twelfth ?? p.twelfth,
+        graduation: incomingProfile.education?.graduation ?? p.graduation,
+      }));
+      setProjectDraft((p) => ({
+        ...p,
+        title: incomingProfile.projects?.[0]?.title ?? p.title,
+        description: incomingProfile.projects?.[0]?.description ?? p.description,
+      }));
+      setLanguagesDraft(incomingProfile.languages ?? "");
+      setCareerPrefDraft((p) => ({
+        ...p,
+        preferredLocation: incomingProfile.careerPreferences?.preferredLocation ?? p.preferredLocation,
+        preferredRole: incomingProfile.careerPreferences?.preferredRole ?? p.preferredRole,
+        expectedSalary: incomingProfile.careerPreferences?.expectedSalary ?? p.expectedSalary,
+        shift: incomingProfile.careerPreferences?.shift ?? p.shift,
+        jobType: incomingProfile.careerPreferences?.jobType ?? p.jobType,
+        employmentType: incomingProfile.careerPreferences?.employmentType ?? p.employmentType,
       }));
 
       actions.pushToast({
@@ -750,6 +788,43 @@ export default function ProfileAndSkillsPage() {
     setErrors((p) => ({ ...p, edu10: "", edu12: "", eduGrad: "" }));
   };
 
+  const deleteEducation = async () => {
+    const hasAny =
+      Boolean(state.profile.education?.tenth?.trim()) ||
+      Boolean(state.profile.education?.twelfth?.trim()) ||
+      Boolean(state.profile.education?.graduation?.trim());
+
+    if (!hasAny) {
+      actions.pushToast({ type: "info", title: "No education to delete", description: "Add education details first." });
+      return;
+    }
+
+    const del = await deleteEducationFromSupabase();
+    if (!del.ok) {
+      if (del.reason === "not_configured" || del.reason === "no_user") {
+        actions.pushToast({
+          type: "error",
+          title: "Delete unavailable",
+          description: "Supabase is not configured or you're not signed in.",
+        });
+        return;
+      }
+
+      actions.pushToast({
+        type: "error",
+        title: "Couldn't delete education",
+        description: del.error?.message || "Please try again.",
+      });
+      return;
+    }
+
+    const nextProfile = { ...state.profile, education: { tenth: "", twelfth: "", graduation: "" } };
+    actions.updateProfile(nextProfile);
+    setEducationDraft({ tenth: "", twelfth: "", graduation: "" });
+
+    actions.pushToast({ type: "success", title: "Education deleted", description: "Removed from cloud and local profile.", ttlMs: 2200 });
+  };
+
   const saveProject = () => {
     setProjectTouched({ title: true, description: true });
 
@@ -789,6 +864,38 @@ export default function ProfileAndSkillsPage() {
     setErrors((p) => ({ ...p, projectTitle: "", projectDescription: "" }));
   };
 
+  const deleteProjects = async () => {
+    const hasAny = Boolean(state.profile.projects?.length);
+    if (!hasAny) {
+      actions.pushToast({ type: "info", title: "No projects to delete", description: "Add a project first." });
+      return;
+    }
+
+    const del = await deleteProjectsFromSupabase();
+    if (!del.ok) {
+      if (del.reason === "not_configured" || del.reason === "no_user") {
+        actions.pushToast({
+          type: "error",
+          title: "Delete unavailable",
+          description: "Supabase is not configured or you're not signed in.",
+        });
+        return;
+      }
+      actions.pushToast({
+        type: "error",
+        title: "Couldn't delete projects",
+        description: del.error?.message || "Please try again.",
+      });
+      return;
+    }
+
+    const nextProfile = { ...state.profile, projects: [] };
+    actions.updateProfile(nextProfile);
+    setProjectDraft({ title: "", description: "" });
+
+    actions.pushToast({ type: "success", title: "Projects deleted", description: "Removed from cloud and local profile.", ttlMs: 2200 });
+  };
+
   const saveLanguages = () => {
     setLanguagesTouched(true);
 
@@ -817,6 +924,88 @@ export default function ProfileAndSkillsPage() {
     setLanguagesDraft(state.profile.languages || "");
     setLanguagesTouched(false);
     setErrors((p) => ({ ...p, languages: "" }));
+  };
+
+  const deleteLanguages = async () => {
+    if (!String(state.profile.languages || "").trim()) {
+      actions.pushToast({ type: "info", title: "No languages to delete", description: "Add languages first." });
+      return;
+    }
+
+    const del = await deleteLanguagesFromSupabase();
+    if (!del.ok) {
+      if (del.reason === "not_configured" || del.reason === "no_user") {
+        actions.pushToast({
+          type: "error",
+          title: "Delete unavailable",
+          description: "Supabase is not configured or you're not signed in.",
+        });
+        return;
+      }
+      actions.pushToast({
+        type: "error",
+        title: "Couldn't delete languages",
+        description: del.error?.message || "Please try again.",
+      });
+      return;
+    }
+
+    const nextProfile = { ...state.profile, languages: "" };
+    actions.updateProfile(nextProfile);
+    setLanguagesDraft("");
+
+    actions.pushToast({ type: "success", title: "Languages deleted", description: "Removed from cloud and local profile.", ttlMs: 2200 });
+  };
+
+  const deleteCareerPreferences = async () => {
+    const hasAny =
+      Boolean(state.profile.careerPreferences?.preferredLocation?.trim()) ||
+      Boolean(state.profile.careerPreferences?.preferredRole?.trim()) ||
+      Boolean(String(state.profile.careerPreferences?.expectedSalary || "").trim()) ||
+      Boolean(state.profile.careerPreferences?.shift) ||
+      Boolean(state.profile.careerPreferences?.jobType) ||
+      Boolean(state.profile.careerPreferences?.employmentType);
+
+    if (!hasAny) {
+      actions.pushToast({ type: "info", title: "No preferences to delete", description: "Set career preferences first." });
+      return;
+    }
+
+    const del = await deleteCareerPreferencesFromSupabase();
+    if (!del.ok) {
+      if (del.reason === "not_configured" || del.reason === "no_user") {
+        actions.pushToast({
+          type: "error",
+          title: "Delete unavailable",
+          description: "Supabase is not configured or you're not signed in.",
+        });
+        return;
+      }
+      actions.pushToast({
+        type: "error",
+        title: "Couldn't delete preferences",
+        description: del.error?.message || "Please try again.",
+      });
+      return;
+    }
+
+    const nextProfile = { ...state.profile, careerPreferences: { preferredLocation: "", preferredRole: "", expectedSalary: "", shift: "", jobType: "", employmentType: "" } };
+    actions.updateProfile(nextProfile);
+    setCareerPrefDraft({
+      preferredLocation: "",
+      preferredRole: "",
+      expectedSalary: "",
+      shift: "",
+      jobType: "",
+      employmentType: "",
+    });
+
+    actions.pushToast({
+      type: "success",
+      title: "Preferences deleted",
+      description: "Removed from cloud and local profile.",
+      ttlMs: 2200,
+    });
   };
 
   return (
@@ -1236,6 +1425,15 @@ export default function ProfileAndSkillsPage() {
                 <p>{state.profile.projects?.[0]?.title || "—"}</p>
               </div>
 
+              <div className="card third" style={{ gridColumn: "span 3" }}>
+                <h4 style={{ marginTop: 0 }}>Actions</h4>
+                <div className="row" style={{ marginTop: 8 }}>
+                  <button className="btn danger" type="button" onClick={deleteProjects} disabled={!state.profile.projects?.length}>
+                    Delete
+                  </button>
+                </div>
+              </div>
+
               <div className="card full" style={{ gridColumn: "1 / -1" }}>
                 <h4 style={{ marginTop: 0 }}>Project description</h4>
                 <p style={{ color: "var(--muted)" }}>
@@ -1324,6 +1522,15 @@ export default function ProfileAndSkillsPage() {
               <div className="card third" style={{ gridColumn: "span 4" }}>
                 <h4 style={{ marginTop: 0 }}>10th</h4>
                 <p style={{ color: "var(--muted)" }}>{state.profile.education?.tenth || "—"}</p>
+              </div>
+
+              <div className="card third" style={{ gridColumn: "span 4" }}>
+                <h4 style={{ marginTop: 0 }}>Actions</h4>
+                <div className="row" style={{ marginTop: 8 }}>
+                  <button className="btn danger" type="button" onClick={deleteEducation}>
+                    Delete
+                  </button>
+                </div>
               </div>
 
               <div className="card third" style={{ gridColumn: "span 4" }}>
@@ -1441,6 +1648,15 @@ export default function ProfileAndSkillsPage() {
                 </p>
               </div>
 
+              <div className="card third" style={{ gridColumn: "span 3" }}>
+                <h4 style={{ marginTop: 0 }}>Actions</h4>
+                <div className="row" style={{ marginTop: 8 }}>
+                  <button className="btn danger" type="button" onClick={deleteLanguages} disabled={!String(state.profile.languages || "").trim()}>
+                    Delete
+                  </button>
+                </div>
+              </div>
+
               <div className="card full" style={{ gridColumn: "1 / -1" }}>
                 <p style={{ margin: 0, color: "var(--muted)" }}>
                   Save will persist locally (preview mode). Cancel will revert unsaved changes.
@@ -1499,6 +1715,15 @@ export default function ProfileAndSkillsPage() {
               <div className="card third" style={{ gridColumn: "span 4" }}>
                 <h4 style={{ marginTop: 0 }}>Preferred location</h4>
                 <p>{state.profile.careerPreferences?.preferredLocation || "—"}</p>
+              </div>
+
+              <div className="card third" style={{ gridColumn: "span 3" }}>
+                <h4 style={{ marginTop: 0 }}>Actions</h4>
+                <div className="row" style={{ marginTop: 8 }}>
+                  <button className="btn danger" type="button" onClick={deleteCareerPreferences}>
+                    Delete
+                  </button>
+                </div>
               </div>
 
               <div className="card third" style={{ gridColumn: "span 4" }}>
