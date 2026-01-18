@@ -9,6 +9,7 @@ import {
   loadProfileAndSkillsFromSupabase,
   saveProfileAndSkillsToSupabase,
 } from "../utils/profilePersistence";
+import { loadUserBasicProfile, upsertUserBasicProfile } from "../utils/profileBasicPersistence";
 import { uploadOrReplaceResume, deleteResumeByPath } from "../utils/resumeStorage";
 import { updateResumeMetadataInSupabase } from "../utils/resumePersistence";
 
@@ -47,6 +48,7 @@ export default function ProfileAndSkillsPage() {
     let cancelled = false;
 
     (async () => {
+      // 1) Load full profile/skills payload (existing behavior)
       const res = await loadProfileAndSkillsFromSupabase();
 
       if (cancelled) return;
@@ -63,49 +65,87 @@ export default function ProfileAndSkillsPage() {
         return;
       }
 
-      if (!res.found) return;
+      // 2) Load basic fields from `public.users` to ensure name/email/phone/location hydrate correctly.
+      // This is separate because the legacy profile sync may map different columns (e.g. full_name/user_id).
+      const basicRes = await loadUserBasicProfile();
 
-      const incomingProfile = res.payload?.profile && typeof res.payload.profile === "object" ? res.payload.profile : {};
-      const incomingSkills = Array.isArray(res.payload?.skills) ? res.payload.skills : [];
+      // If not configured / no session, be quiet (matches existing behavior).
+      if (!basicRes.ok && (basicRes.reason === "not_configured" || basicRes.reason === "no_session")) {
+        // continue
+      } else if (!basicRes.ok) {
+        // Log full JSON for debugging while keeping toast readable.
+        // eslint-disable-next-line no-console
+        console.error("loadUserBasicProfile failed:", basicRes.error);
+        actions.pushToast({
+          type: "error",
+          title: "Couldn’t load basic profile",
+          description: basicRes.error?.message || "Some fields may not reflect your saved profile.",
+        });
+      }
+
+      if (cancelled) return;
+
+      if (!res.found && !basicRes.ok) return;
+
+      const incomingProfile = res.found && res.payload?.profile && typeof res.payload.profile === "object" ? res.payload.profile : {};
+      const incomingSkills = res.found && Array.isArray(res.payload?.skills) ? res.payload.skills : [];
 
       // Merge into global state so the rest of the app stays consistent.
-      // We keep existing fields as fallback; Supabase values override when present.
-      setState((prev) => ({
-        ...prev,
-        profile: { ...prev.profile, ...incomingProfile },
-        skills: incomingSkills.length ? incomingSkills : prev.skills,
-      }));
+      setState((prev) => {
+        const mergedProfile = { ...prev.profile, ...incomingProfile };
+
+        // Basic users table should be authoritative for these fields when present.
+        const basic = basicRes.ok ? basicRes.data : null;
+        if (basic) {
+          mergedProfile.fullName = basic.name ?? mergedProfile.fullName;
+          mergedProfile.email = basic.email ?? mergedProfile.email;
+          mergedProfile.phone = basic.phone_number ?? mergedProfile.phone;
+          mergedProfile.location = basic.location ?? mergedProfile.location;
+        }
+
+        return {
+          ...prev,
+          profile: mergedProfile,
+          skills: incomingSkills.length ? incomingSkills : prev.skills,
+        };
+      });
 
       // Also hydrate local drafts so the editable sections reflect the cloud state immediately.
-      setProfileDraft((p) => ({
-        ...p,
-        fullName: incomingProfile.fullName ?? p.fullName,
-        email: incomingProfile.email ?? p.email,
-        phone: incomingProfile.phone ?? p.phone,
-        location: incomingProfile.location ?? p.location,
-        bio: incomingProfile.bio ?? p.bio,
-      }));
-      setEducationDraft((p) => ({
-        ...p,
-        tenth: incomingProfile.education?.tenth ?? p.tenth,
-        twelfth: incomingProfile.education?.twelfth ?? p.twelfth,
-        graduation: incomingProfile.education?.graduation ?? p.graduation,
-      }));
-      setProjectDraft((p) => ({
-        ...p,
-        title: incomingProfile.projects?.[0]?.title ?? p.title,
-        description: incomingProfile.projects?.[0]?.description ?? p.description,
-      }));
-      setLanguagesDraft(incomingProfile.languages ?? "");
-      setCareerPrefDraft((p) => ({
-        ...p,
-        preferredLocation: incomingProfile.careerPreferences?.preferredLocation ?? p.preferredLocation,
-        preferredRole: incomingProfile.careerPreferences?.preferredRole ?? p.preferredRole,
-        expectedSalary: incomingProfile.careerPreferences?.expectedSalary ?? p.expectedSalary,
-        shift: incomingProfile.careerPreferences?.shift ?? p.shift,
-        jobType: incomingProfile.careerPreferences?.jobType ?? p.jobType,
-        employmentType: incomingProfile.careerPreferences?.employmentType ?? p.employmentType,
-      }));
+      setProfileDraft((p) => {
+        const basic = basicRes.ok ? basicRes.data : null;
+        return {
+          ...p,
+          fullName: (basic?.name ?? incomingProfile.fullName) ?? p.fullName,
+          email: (basic?.email ?? incomingProfile.email) ?? p.email,
+          phone: (basic?.phone_number ?? incomingProfile.phone) ?? p.phone,
+          location: (basic?.location ?? incomingProfile.location) ?? p.location,
+          bio: incomingProfile.bio ?? p.bio,
+        };
+      });
+
+      if (res.found) {
+        setEducationDraft((p) => ({
+          ...p,
+          tenth: incomingProfile.education?.tenth ?? p.tenth,
+          twelfth: incomingProfile.education?.twelfth ?? p.twelfth,
+          graduation: incomingProfile.education?.graduation ?? p.graduation,
+        }));
+        setProjectDraft((p) => ({
+          ...p,
+          title: incomingProfile.projects?.[0]?.title ?? p.title,
+          description: incomingProfile.projects?.[0]?.description ?? p.description,
+        }));
+        setLanguagesDraft(incomingProfile.languages ?? "");
+        setCareerPrefDraft((p) => ({
+          ...p,
+          preferredLocation: incomingProfile.careerPreferences?.preferredLocation ?? p.preferredLocation,
+          preferredRole: incomingProfile.careerPreferences?.preferredRole ?? p.preferredRole,
+          expectedSalary: incomingProfile.careerPreferences?.expectedSalary ?? p.expectedSalary,
+          shift: incomingProfile.careerPreferences?.shift ?? p.shift,
+          jobType: incomingProfile.careerPreferences?.jobType ?? p.jobType,
+          employmentType: incomingProfile.careerPreferences?.employmentType ?? p.employmentType,
+        }));
+      }
 
       actions.pushToast({
         type: "success",
@@ -659,6 +699,52 @@ export default function ProfileAndSkillsPage() {
     };
 
     actions.updateProfile(nextProfile);
+
+    // 1) Persist BASIC profile to public.users with explicit mapping and session guard.
+    void (async () => {
+      const up = await upsertUserBasicProfile({
+        name: nextProfile.fullName,
+        email: nextProfile.email,
+        phone_number: nextProfile.phone,
+        location: nextProfile.location,
+        profile_photo_url: nextProfile.profilePhotoUrl || null,
+      });
+
+      if (!up.ok) {
+        if (up.reason === "no_session") {
+          actions.pushToast({
+            type: "error",
+            title: "Sign in required",
+            description: "Please sign in to save your profile to the cloud.",
+          });
+          return;
+        }
+        if (up.reason === "not_configured") {
+          // Keep quiet: app can run without Supabase.
+          return;
+        }
+
+        // eslint-disable-next-line no-console
+        console.error("upsertUserBasicProfile failed:", up.error);
+        actions.pushToast({
+          type: "error",
+          title: "Couldn’t save profile to Supabase",
+          description: up.error?.message || "Your changes were saved locally, but cloud sync failed.",
+        });
+        return;
+      }
+
+      actions.pushToast({
+        type: "success",
+        title: "Profile saved",
+        description: up.usedLocationFallback
+          ? "Saved to Supabase (location stored in career preferences)."
+          : "Saved to Supabase.",
+        ttlMs: 2200,
+      });
+    })();
+
+    // 2) Keep existing best-effort full profile+skills sync (other tables).
     void persistToSupabaseBestEffort(nextProfile, state.skills);
   };
 
