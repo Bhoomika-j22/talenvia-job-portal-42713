@@ -103,6 +103,19 @@ export default function ProfileAndSkillsPage() {
     graduation: false,
   });
 
+  // PROJECTS (persisted locally into profile.projects)
+  // We support a simple single-project draft to match the existing UI,
+  // but store it as an array (future-friendly).
+  const [projectDraft, setProjectDraft] = useState(() => ({
+    title: state.profile.projects?.[0]?.title || "",
+    description: state.profile.projects?.[0]?.description || "",
+  }));
+
+  const [projectTouched, setProjectTouched] = useState({
+    title: false,
+    description: false,
+  });
+
   const errorId = (name) => `ps-err-${name}`;
 
   const getInputClassName = (fieldName) => {
@@ -213,6 +226,21 @@ export default function ProfileAndSkillsPage() {
     return next;
   };
 
+  const validateProject = (draft) => {
+    // Inline validation pattern consistent with other sections:
+    // - Title required
+    // - Description required + max length
+    const next = { projectTitle: "", projectDescription: "" };
+
+    if (!draft.title.trim()) next.projectTitle = "Project title is required.";
+    if (!draft.description.trim()) next.projectDescription = "Project description is required.";
+
+    if (draft.title.trim().length > 80) next.projectTitle = "Project title is too long (max 80 characters).";
+    if (draft.description.trim().length > 1000) next.projectDescription = "Project description is too long (max 1000 characters).";
+
+    return next;
+  };
+
   const markTouched = (fieldName) => {
     setTouched((p) => ({ ...p, [fieldName]: true }));
   };
@@ -223,6 +251,10 @@ export default function ProfileAndSkillsPage() {
 
   const markEducationTouched = (fieldName) => {
     setEducationTouched((p) => ({ ...p, [fieldName]: true }));
+  };
+
+  const markProjectTouched = (fieldName) => {
+    setProjectTouched((p) => ({ ...p, [fieldName]: true }));
   };
 
   const updateProfileField = (fieldName, value) => {
@@ -269,6 +301,21 @@ export default function ProfileAndSkillsPage() {
       if (fieldName === "tenth") next.edu10 = nextEduErrors.edu10 || "";
       if (fieldName === "twelfth") next.edu12 = nextEduErrors.edu12 || "";
       if (fieldName === "graduation") next.eduGrad = nextEduErrors.eduGrad || "";
+
+      return next;
+    });
+  };
+
+  const updateProjectField = (fieldName, value) => {
+    setProjectDraft((p) => ({ ...p, [fieldName]: value }));
+
+    // Live-validate only the corresponding error field, consistent with other sections.
+    setErrors((prev) => {
+      const next = { ...prev };
+      const nextProjectErrors = validateProject({ ...projectDraft, [fieldName]: value });
+
+      if (fieldName === "title") next.projectTitle = nextProjectErrors.projectTitle || "";
+      if (fieldName === "description") next.projectDescription = nextProjectErrors.projectDescription || "";
 
       return next;
     });
@@ -440,6 +487,41 @@ export default function ProfileAndSkillsPage() {
     });
     setEducationTouched({ tenth: false, twelfth: false, graduation: false });
     setErrors((p) => ({ ...p, edu10: "", edu12: "", eduGrad: "" }));
+  };
+
+  const saveProject = () => {
+    setProjectTouched({ title: true, description: true });
+
+    const nextErrors = validateProject(projectDraft);
+    setErrors((prev) => ({ ...prev, ...nextErrors }));
+
+    const hasAnyError = Object.values(nextErrors).some(Boolean);
+    if (hasAnyError) {
+      actions.pushToast({
+        type: "error",
+        title: "Please fix the highlighted fields",
+        description: "Some project fields are missing or invalid.",
+      });
+      return;
+    }
+
+    actions.updateProfile({
+      projects: [
+        {
+          title: projectDraft.title.trim(),
+          description: projectDraft.description.trim(),
+        },
+      ],
+    });
+  };
+
+  const resetProject = () => {
+    setProjectDraft({
+      title: state.profile.projects?.[0]?.title || "",
+      description: state.profile.projects?.[0]?.description || "",
+    });
+    setProjectTouched({ title: false, description: false });
+    setErrors((p) => ({ ...p, projectTitle: "", projectDescription: "" }));
   };
 
   return (
@@ -764,24 +846,94 @@ export default function ProfileAndSkillsPage() {
         </div>
 
         {/* PROJECTS */}
-        <div className="card full">
-          <h4>Projects</h4>
-          <p style={{ margin: "6px 0 0", color: "var(--muted)" }}>
-            Projects are UI-only fields for now (not persisted in this template).
-          </p>
-          <div className="row" style={{ marginTop: 10 }}>
-            <div className="field">
-              <label htmlFor="ps-project-title">Project Title</label>
-              <input id="ps-project-title" className="input" placeholder="Project Title" />
+        <EditableSection
+          title="Projects"
+          viewContent={
+            <div className="grid" style={{ gridTemplateColumns: "repeat(12, 1fr)", gap: 12 }}>
+              <div className="card third" style={{ gridColumn: "span 4" }}>
+                <h4 style={{ marginTop: 0 }}>Project title</h4>
+                <p>{state.profile.projects?.[0]?.title || "—"}</p>
+              </div>
+
+              <div className="card full" style={{ gridColumn: "1 / -1" }}>
+                <h4 style={{ marginTop: 0 }}>Project description</h4>
+                <p style={{ color: "var(--muted)" }}>
+                  {state.profile.projects?.[0]?.description || "Add a short description of what you built, your role, and impact."}
+                </p>
+              </div>
+
+              <div className="card full" style={{ gridColumn: "1 / -1" }}>
+                <p style={{ margin: 0, color: "var(--muted)" }}>
+                  Save will persist locally (preview mode). Cancel will revert unsaved changes.
+                </p>
+              </div>
             </div>
-          </div>
-          <div className="row" style={{ marginTop: 10 }}>
-            <div className="field" style={{ minWidth: "100%" }}>
-              <label htmlFor="ps-project-desc">Project Description</label>
-              <textarea id="ps-project-desc" className="textarea" placeholder="Project Description" />
-            </div>
-          </div>
-        </div>
+          }
+          editContent={
+            <>
+              <p style={{ margin: "6px 0 0", color: "var(--muted)" }}>
+                Add one highlight project. Title and description are required.
+              </p>
+
+              <div className="row" style={{ marginTop: 10 }}>
+                <div className="field">
+                  <label htmlFor="ps-project-title">Project Title</label>
+                  <input
+                    id="ps-project-title"
+                    className={getInputClassName("projectTitle")}
+                    placeholder="e.g. Design System for Hiring Portal"
+                    value={projectDraft.title}
+                    onChange={(e) => updateProjectField("title", e.target.value)}
+                    onBlur={() => {
+                      markProjectTouched("title");
+                      const next = validateProject(projectDraft);
+                      setErrors((p) => ({ ...p, projectTitle: next.projectTitle }));
+                    }}
+                    aria-invalid={Boolean(projectTouched.title && errors.projectTitle)}
+                    aria-describedby={projectTouched.title && errors.projectTitle ? errorId("projectTitle") : undefined}
+                  />
+                  {projectTouched.title && errors.projectTitle ? (
+                    <p className="field-error" id={errorId("projectTitle")}>
+                      {errors.projectTitle}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="row" style={{ marginTop: 10 }}>
+                <div className="field" style={{ minWidth: "100%" }}>
+                  <label htmlFor="ps-project-desc">Project Description</label>
+                  <textarea
+                    id="ps-project-desc"
+                    className={getTextareaClassName("projectDescription")}
+                    placeholder="What did you build? What was your role? Tech stack? Outcomes?"
+                    value={projectDraft.description}
+                    onChange={(e) => updateProjectField("description", e.target.value)}
+                    onBlur={() => {
+                      markProjectTouched("description");
+                      const next = validateProject(projectDraft);
+                      setErrors((p) => ({ ...p, projectDescription: next.projectDescription }));
+                    }}
+                    aria-invalid={Boolean(projectTouched.description && errors.projectDescription)}
+                    aria-describedby={
+                      projectTouched.description && errors.projectDescription ? errorId("projectDescription") : undefined
+                    }
+                  />
+                  {projectTouched.description && errors.projectDescription ? (
+                    <p className="field-error" id={errorId("projectDescription")}>
+                      {errors.projectDescription}
+                    </p>
+                  ) : null}
+                  <p style={{ margin: "6px 0 0", color: "var(--muted)", fontSize: 12 }}>
+                    {projectDraft.description.trim().length}/1000
+                  </p>
+                </div>
+              </div>
+            </>
+          }
+          onSave={saveProject}
+          onCancel={resetProject}
+        />
 
         {/* EDUCATION */}
         <EditableSection
