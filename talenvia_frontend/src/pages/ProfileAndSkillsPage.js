@@ -90,6 +90,19 @@ export default function ProfileAndSkillsPage() {
     employmentType: false,
   });
 
+  // EDUCATION (persisted locally into profile.education)
+  const [educationDraft, setEducationDraft] = useState(() => ({
+    tenth: state.profile.education?.tenth || "",
+    twelfth: state.profile.education?.twelfth || "",
+    graduation: state.profile.education?.graduation || "",
+  }));
+
+  const [educationTouched, setEducationTouched] = useState({
+    tenth: false,
+    twelfth: false,
+    graduation: false,
+  });
+
   const errorId = (name) => `ps-err-${name}`;
 
   const getInputClassName = (fieldName) => {
@@ -184,12 +197,32 @@ export default function ProfileAndSkillsPage() {
     return next;
   };
 
+  const validateEducation = (draft) => {
+    // Simple, consistent required-field validation for education.
+    const next = { edu10: "", edu12: "", eduGrad: "" };
+
+    if (!draft.tenth.trim()) next.edu10 = "10th details are required.";
+    if (!draft.twelfth.trim()) next.edu12 = "12th details are required.";
+    if (!draft.graduation.trim()) next.eduGrad = "Graduation details are required.";
+
+    // Keep inputs reasonable without forcing strict formats
+    if (draft.tenth.trim().length > 120) next.edu10 = "10th details are too long (max 120 chars).";
+    if (draft.twelfth.trim().length > 120) next.edu12 = "12th details are too long (max 120 chars).";
+    if (draft.graduation.trim().length > 160) next.eduGrad = "Graduation details are too long (max 160 chars).";
+
+    return next;
+  };
+
   const markTouched = (fieldName) => {
     setTouched((p) => ({ ...p, [fieldName]: true }));
   };
 
   const markCareerPrefTouched = (fieldName) => {
     setCareerPrefTouched((p) => ({ ...p, [fieldName]: true }));
+  };
+
+  const markEducationTouched = (fieldName) => {
+    setEducationTouched((p) => ({ ...p, [fieldName]: true }));
   };
 
   const updateProfileField = (fieldName, value) => {
@@ -220,6 +253,22 @@ export default function ProfileAndSkillsPage() {
       if (fieldName === "shift") next.prefShift = nextPrefErrors.prefShift || "";
       if (fieldName === "jobType") next.prefJobType = nextPrefErrors.prefJobType || "";
       if (fieldName === "employmentType") next.prefEmploymentType = nextPrefErrors.prefEmploymentType || "";
+
+      return next;
+    });
+  };
+
+  const updateEducationField = (fieldName, value) => {
+    setEducationDraft((p) => ({ ...p, [fieldName]: value }));
+
+    // Live-validate only the corresponding error field (consistent with other sections)
+    setErrors((prev) => {
+      const next = { ...prev };
+      const nextEduErrors = validateEducation({ ...educationDraft, [fieldName]: value });
+
+      if (fieldName === "tenth") next.edu10 = nextEduErrors.edu10 || "";
+      if (fieldName === "twelfth") next.edu12 = nextEduErrors.edu12 || "";
+      if (fieldName === "graduation") next.eduGrad = nextEduErrors.eduGrad || "";
 
       return next;
     });
@@ -355,6 +404,42 @@ export default function ProfileAndSkillsPage() {
       prefJobType: "",
       prefEmploymentType: "",
     }));
+  };
+
+  const saveEducation = () => {
+    // Mark all as touched so errors show if invalid.
+    setEducationTouched({ tenth: true, twelfth: true, graduation: true });
+
+    const nextErrors = validateEducation(educationDraft);
+    setErrors((prev) => ({ ...prev, ...nextErrors }));
+
+    const hasAnyError = Object.values(nextErrors).some(Boolean);
+    if (hasAnyError) {
+      actions.pushToast({
+        type: "error",
+        title: "Please fix the highlighted fields",
+        description: "Some education fields are missing or invalid.",
+      });
+      return;
+    }
+
+    actions.updateProfile({
+      education: {
+        tenth: educationDraft.tenth.trim(),
+        twelfth: educationDraft.twelfth.trim(),
+        graduation: educationDraft.graduation.trim(),
+      },
+    });
+  };
+
+  const resetEducation = () => {
+    setEducationDraft({
+      tenth: state.profile.education?.tenth || "",
+      twelfth: state.profile.education?.twelfth || "",
+      graduation: state.profile.education?.graduation || "",
+    });
+    setEducationTouched({ tenth: false, twelfth: false, graduation: false });
+    setErrors((p) => ({ ...p, edu10: "", edu12: "", eduGrad: "" }));
   };
 
   return (
@@ -699,30 +784,115 @@ export default function ProfileAndSkillsPage() {
         </div>
 
         {/* EDUCATION */}
-        <div className="card full">
-          <h4>Education</h4>
-          <p style={{ margin: "6px 0 0", color: "var(--muted)" }}>
-            Education fields are UI-only in this preview.
-          </p>
+        <EditableSection
+          title="Education"
+          viewContent={
+            <div className="grid" style={{ gridTemplateColumns: "repeat(12, 1fr)", gap: 12 }}>
+              <div className="card third" style={{ gridColumn: "span 4" }}>
+                <h4 style={{ marginTop: 0 }}>10th</h4>
+                <p style={{ color: "var(--muted)" }}>{state.profile.education?.tenth || "—"}</p>
+              </div>
 
-          <div className="row" style={{ marginTop: 10 }}>
-            <div className="field">
-              <label htmlFor="ps-edu-10">10th School & Percentage</label>
-              <input id="ps-edu-10" className="input" placeholder="10th School & Percentage" />
-            </div>
-            <div className="field">
-              <label htmlFor="ps-edu-12">12th School & Percentage</label>
-              <input id="ps-edu-12" className="input" placeholder="12th School & Percentage" />
-            </div>
-          </div>
+              <div className="card third" style={{ gridColumn: "span 4" }}>
+                <h4 style={{ marginTop: 0 }}>12th</h4>
+                <p style={{ color: "var(--muted)" }}>{state.profile.education?.twelfth || "—"}</p>
+              </div>
 
-          <div className="row" style={{ marginTop: 10 }}>
-            <div className="field">
-              <label htmlFor="ps-edu-grad">Graduation (Degree, College)</label>
-              <input id="ps-edu-grad" className="input" placeholder="Graduation (Degree, College)" />
+              <div className="card third" style={{ gridColumn: "span 4" }}>
+                <h4 style={{ marginTop: 0 }}>Graduation</h4>
+                <p style={{ color: "var(--muted)" }}>{state.profile.education?.graduation || "—"}</p>
+              </div>
+
+              <div className="card full" style={{ gridColumn: "1 / -1" }}>
+                <p style={{ margin: 0, color: "var(--muted)" }}>
+                  Save will persist locally (preview mode). Cancel will revert unsaved changes.
+                </p>
+              </div>
             </div>
-          </div>
-        </div>
+          }
+          editContent={
+            <>
+              <p style={{ margin: "6px 0 0", color: "var(--muted)" }}>
+                Add your education details. All three fields are required.
+              </p>
+
+              <div className="row" style={{ marginTop: 10 }}>
+                <div className="field">
+                  <label htmlFor="ps-edu-10">10th School & Percentage</label>
+                  <input
+                    id="ps-edu-10"
+                    className={getInputClassName("edu10")}
+                    placeholder="e.g. ABC School • 92%"
+                    value={educationDraft.tenth}
+                    onChange={(e) => updateEducationField("tenth", e.target.value)}
+                    onBlur={() => {
+                      markEducationTouched("tenth");
+                      const next = validateEducation(educationDraft);
+                      setErrors((p) => ({ ...p, edu10: next.edu10 }));
+                    }}
+                    aria-invalid={Boolean(educationTouched.tenth && errors.edu10)}
+                    aria-describedby={educationTouched.tenth && errors.edu10 ? errorId("edu10") : undefined}
+                  />
+                  {educationTouched.tenth && errors.edu10 ? (
+                    <p className="field-error" id={errorId("edu10")}>
+                      {errors.edu10}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="field">
+                  <label htmlFor="ps-edu-12">12th School & Percentage</label>
+                  <input
+                    id="ps-edu-12"
+                    className={getInputClassName("edu12")}
+                    placeholder="e.g. XYZ Junior College • 88%"
+                    value={educationDraft.twelfth}
+                    onChange={(e) => updateEducationField("twelfth", e.target.value)}
+                    onBlur={() => {
+                      markEducationTouched("twelfth");
+                      const next = validateEducation(educationDraft);
+                      setErrors((p) => ({ ...p, edu12: next.edu12 }));
+                    }}
+                    aria-invalid={Boolean(educationTouched.twelfth && errors.edu12)}
+                    aria-describedby={educationTouched.twelfth && errors.edu12 ? errorId("edu12") : undefined}
+                  />
+                  {educationTouched.twelfth && errors.edu12 ? (
+                    <p className="field-error" id={errorId("edu12")}>
+                      {errors.edu12}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="row" style={{ marginTop: 10 }}>
+                <div className="field">
+                  <label htmlFor="ps-edu-grad">Graduation (Degree, College)</label>
+                  <input
+                    id="ps-edu-grad"
+                    className={getInputClassName("eduGrad")}
+                    placeholder="e.g. B.Tech (CSE) • University Name"
+                    value={educationDraft.graduation}
+                    onChange={(e) => updateEducationField("graduation", e.target.value)}
+                    onBlur={() => {
+                      markEducationTouched("graduation");
+                      const next = validateEducation(educationDraft);
+                      setErrors((p) => ({ ...p, eduGrad: next.eduGrad }));
+                    }}
+                    aria-invalid={Boolean(educationTouched.graduation && errors.eduGrad)}
+                    aria-describedby={educationTouched.graduation && errors.eduGrad ? errorId("eduGrad") : undefined}
+                  />
+                  {educationTouched.graduation && errors.eduGrad ? (
+                    <p className="field-error" id={errorId("eduGrad")}>
+                      {errors.eduGrad}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            </>
+          }
+          onSave={saveEducation}
+          onCancel={resetEducation}
+        />
 
         {/* LANGUAGES */}
         <div className="card full">
