@@ -379,17 +379,54 @@ button, input, select, textarea { font-family: inherit; }
   border-radius: 12px;
   border: 1px solid transparent;
   color: var(--text);
-  transition: background 120ms ease, border-color 120ms ease;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.nav-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.nav-label {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nav-icon {
+  width: 18px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  color: currentColor;
+  opacity: 0.92;
+  flex: 0 0 auto;
+}
+
+.nav-icon svg {
+  width: 18px;
+  height: 18px;
+  display: block;
 }
 
 .nav a:hover {
   background: rgba(124, 58, 237, 0.10);
   border-color: rgba(124, 58, 237, 0.18);
+  color: var(--violet-700);
 }
 
 .nav a.active {
   background: rgba(13, 148, 136, 0.12);
   border-color: rgba(13, 148, 136, 0.22);
+  color: var(--teal-600);
+}
+
+.nav a:focus {
+  outline: none;
+  box-shadow: var(--shadow-sm), var(--focus);
 }
 
 .pill {
