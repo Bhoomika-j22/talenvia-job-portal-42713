@@ -16,7 +16,6 @@ import HowItWorksPage from "./pages/HowItWorksPage";
 import SearchResultsPage from "./pages/SearchResultsPage";
 import { ensureUserRow, supabaseHealthCheck } from "./utils/supabaseHelpers";
 import { getSupabaseConfigStatus, supabase } from "./lib/supabaseClient";
-import { signInWithGoogleOAuth } from "./utils/authHelpers";
 import AuthModal from "./components/AuthModal";
 
 /**
@@ -476,6 +475,58 @@ function Shell() {
                     }}
                   >
                     Sign in
+                  </button>
+
+                  <button
+                    className="btn teal"
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        if (!supabase) {
+                          actions.pushToast({
+                            type: "error",
+                            title: "Supabase not configured",
+                            description: "Missing REACT_APP_SUPABASE_URL / REACT_APP_SUPABASE_KEY.",
+                            ttlMs: 5000,
+                          });
+                          return;
+                        }
+
+                        const { error } = await supabase.auth.signInWithOAuth({
+                          provider: "google",
+                          options: { redirectTo: window.location.origin },
+                        });
+
+                        if (error) {
+                          console.error("[Supabase Auth] signInWithOAuth error", JSON.stringify(error, null, 2));
+                          actions.pushToast({
+                            type: "error",
+                            title: "Google sign-in failed",
+                            description: error.message || "Unable to start OAuth flow.",
+                            ttlMs: 5000,
+                          });
+                          return;
+                        }
+
+                        // OAuth will redirect away; final SIGNED_IN toast is handled by onAuthStateChange.
+                        actions.pushToast({
+                          type: "info",
+                          title: "Redirecting…",
+                          description: "Continue with Google to finish signing in.",
+                          ttlMs: 2500,
+                        });
+                      } catch (e) {
+                        console.error("[Supabase Auth] signInWithOAuth exception", e);
+                        actions.pushToast({
+                          type: "error",
+                          title: "Google sign-in failed",
+                          description: e instanceof Error ? e.message : String(e),
+                          ttlMs: 5000,
+                        });
+                      }
+                    }}
+                  >
+                    Continue with Google
                   </button>
 
                   <button
