@@ -1,6 +1,10 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useAppState } from "../state/AppState";
 import EditableSection from "../components/EditableSection";
+import {
+  loadProfileAndSkillsFromSupabase,
+  saveProfileAndSkillsToSupabase,
+} from "../utils/profilePersistence";
 
 /**
  * This page is the unified Profile & Skills screen.
@@ -24,7 +28,60 @@ const PHONE_ALLOWED_CHARS_REGEX = /^[0-9+()\-\s.]*$/;
 // PUBLIC_INTERFACE
 export default function ProfileAndSkillsPage() {
   /** Unified Profile & Skills page based on the provided ProfileSkills component, with inline validation. */
-  const { state, actions } = useAppState();
+  const { state, actions, setState } = useAppState();
+
+  // Prevent repeated initial hydration (React 18 StrictMode can double-invoke effects in dev)
+  const didHydrateRef = useRef(false);
+
+  // Load persisted profile/skills from Supabase on mount (if configured + authenticated).
+  useEffect(() => {
+    if (didHydrateRef.current) return;
+    didHydrateRef.current = true;
+
+    let cancelled = false;
+
+    (async () => {
+      const res = await loadProfileAndSkillsFromSupabase();
+
+      if (cancelled) return;
+
+      if (!res.ok) {
+        // Not configured / not logged in should not be noisy.
+        if (res.reason === "not_configured" || res.reason === "no_user") return;
+
+        actions.pushToast({
+          type: "error",
+          title: "Couldn’t load profile from cloud",
+          description: res.error?.message || "Using local data instead.",
+        });
+        return;
+      }
+
+      if (!res.found) return;
+
+      const incomingProfile = res.payload?.profile && typeof res.payload.profile === "object" ? res.payload.profile : {};
+      const incomingSkills = Array.isArray(res.payload?.skills) ? res.payload.skills : [];
+
+      // Merge into global state so the rest of the app stays consistent.
+      // We keep existing fields as fallback; Supabase values override when present.
+      setState((prev) => ({
+        ...prev,
+        profile: { ...prev.profile, ...incomingProfile },
+        skills: incomingSkills.length ? incomingSkills : prev.skills,
+      }));
+
+      actions.pushToast({
+        type: "success",
+        title: "Profile synced",
+        description: "Loaded your latest Profile & Skills from Supabase.",
+        ttlMs: 2200,
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [actions, setState]);
 
   // BASIC DETAILS + SUMMARY drafts (persist on Save Profile)
   const [profileDraft, setProfileDraft] = useState(() => ({
@@ -412,9 +469,15 @@ export default function ProfileAndSkillsPage() {
       if (!currentNames.has(s.name)) actions.addSkill({ name: s.name, level: s.level || "Intermediate" });
     });
 
+    // Compute the post-save list deterministically (since add/remove are queued state updates).
+    // This is what we also sync to Supabase.
+    const nextSkills = skillsDraft.map((s) => ({ name: s.name, level: s.level || "Intermediate" }));
+
     // Note: If user changed levels, we don't currently support editing skill levels in AppState.
     // Keep UI consistent by syncing the draft back to the (possibly updated) global list.
     setSkillsDraft(state.skills.map((s) => ({ ...s })));
+
+    void persistToSupabaseBestEffort(state.profile, nextSkills);
   };
 
   const resetSkills = () => {
@@ -422,6 +485,21 @@ export default function ProfileAndSkillsPage() {
     setNewSkillDraft("");
     setSkillsTouched({ newSkill: false });
     setErrors((p) => ({ ...p, newSkill: "" }));
+  };
+
+  const persistToSupabaseBestEffort = async (nextProfile, nextSkills) => {
+    // Best-effort persistence: do not block UI, and do not throw.
+    const res = await saveProfileAndSkillsToSupabase({ profile: nextProfile, skills: nextSkills });
+    if (!res.ok) {
+      // Not configured / not logged in should not be noisy.
+      if (res.reason === "not_configured" || res.reason === "no_user") return;
+
+      actions.pushToast({
+        type: "error",
+        title: "Cloud sync failed",
+        description: res.error?.message || "Your changes were saved locally, but could not be synced.",
+      });
+    }
   };
 
   const saveResume = () => {
@@ -440,12 +518,16 @@ export default function ProfileAndSkillsPage() {
       return;
     }
 
-    actions.updateProfile({
+    const nextProfile = {
+      ...state.profile,
       resume: {
         fileName: String(resumeDraft.fileName || "").trim(),
         link: String(resumeDraft.link || "").trim(),
       },
-    });
+    };
+
+    actions.updateProfile(nextProfile);
+    void persistToSupabaseBestEffort(nextProfile, state.skills);
   };
 
   const resetResume = () => {
@@ -474,13 +556,17 @@ export default function ProfileAndSkillsPage() {
       return;
     }
 
-    actions.updateProfile({
+    const nextProfile = {
+      ...state.profile,
       fullName: profileDraft.fullName.trim(),
       email: profileDraft.email.trim(),
       phone: profileDraft.phone.trim(),
       location: profileDraft.location.trim(),
       bio: profileDraft.bio,
-    });
+    };
+
+    actions.updateProfile(nextProfile);
+    void persistToSupabaseBestEffort(nextProfile, state.skills);
   };
 
   const resetProfile = () => {
@@ -527,7 +613,8 @@ export default function ProfileAndSkillsPage() {
     }
 
     // Persist into profile as an extra field; AppState already merges profile patches safely.
-    actions.updateProfile({
+    const nextProfile = {
+      ...state.profile,
       careerPreferences: {
         preferredLocation: careerPrefDraft.preferredLocation.trim(),
         preferredRole: careerPrefDraft.preferredRole.trim(),
@@ -536,7 +623,10 @@ export default function ProfileAndSkillsPage() {
         jobType: careerPrefDraft.jobType,
         employmentType: careerPrefDraft.employmentType,
       },
-    });
+    };
+
+    actions.updateProfile(nextProfile);
+    void persistToSupabaseBestEffort(nextProfile, state.skills);
   };
 
   const resetCareerPreferences = () => {
@@ -584,13 +674,17 @@ export default function ProfileAndSkillsPage() {
       return;
     }
 
-    actions.updateProfile({
+    const nextProfile = {
+      ...state.profile,
       education: {
         tenth: educationDraft.tenth.trim(),
         twelfth: educationDraft.twelfth.trim(),
         graduation: educationDraft.graduation.trim(),
       },
-    });
+    };
+
+    actions.updateProfile(nextProfile);
+    void persistToSupabaseBestEffort(nextProfile, state.skills);
   };
 
   const resetEducation = () => {
@@ -619,14 +713,18 @@ export default function ProfileAndSkillsPage() {
       return;
     }
 
-    actions.updateProfile({
+    const nextProfile = {
+      ...state.profile,
       projects: [
         {
           title: projectDraft.title.trim(),
           description: projectDraft.description.trim(),
         },
       ],
-    });
+    };
+
+    actions.updateProfile(nextProfile);
+    void persistToSupabaseBestEffort(nextProfile, state.skills);
   };
 
   const resetProject = () => {
@@ -653,9 +751,13 @@ export default function ProfileAndSkillsPage() {
       return;
     }
 
-    actions.updateProfile({
+    const nextProfile = {
+      ...state.profile,
       languages: String(languagesDraft || "").trim(),
-    });
+    };
+
+    actions.updateProfile(nextProfile);
+    void persistToSupabaseBestEffort(nextProfile, state.skills);
   };
 
   const resetLanguages = () => {
