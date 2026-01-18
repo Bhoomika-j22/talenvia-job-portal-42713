@@ -21,6 +21,27 @@ import { ensureUserRow, supabaseHealthCheck } from "./utils/supabaseHelpers";
 import { getSupabaseConfigStatus, supabase } from "./lib/supabaseClient";
 import AuthModal from "./components/AuthModal";
 
+function getUserDisplayLabel(user) {
+  // Prefer display name when available, else fall back to email.
+  const meta = user?.user_metadata || {};
+  return (
+    meta.full_name ||
+    meta.name ||
+    meta.display_name ||
+    meta.preferred_username ||
+    user?.email ||
+    "Signed in"
+  );
+}
+
+function getInitials(label) {
+  const text = String(label || "").trim();
+  if (!text) return "?";
+  const parts = text.split(/\s+/).filter(Boolean);
+  const initials = parts.length >= 2 ? `${parts[0][0]}${parts[1][0]}` : `${parts[0][0]}`;
+  return initials.toUpperCase();
+}
+
 /**
  * Talenvia React Frontend
  * - Responsive app shell (header, sidebar, main content, footer)
@@ -323,6 +344,10 @@ function Shell() {
       }
 
       if (event === "SIGNED_OUT") {
+        // Ensure UI state is cleared even if the session payload is unexpectedly null/undefined.
+        // This keeps ProtectedRoute enforcement immediate.
+        actions.clearAuth();
+
         actions.pushToast({ type: "info", title: "Signed out", description: "You have been signed out." });
 
         // If user signs out while on protected areas, gently return to sign-in.
@@ -545,15 +570,30 @@ function Shell() {
                 </>
               ) : (
                 <>
-                  <div className="user-chip" title={authUser.email || "Signed in"}>
-                    {avatarUrl ? <img className="avatar" src={avatarUrl} alt="" /> : <span aria-hidden="true">👤</span>}
-                    <span className="user-email">{authUser.email || "Signed in"}</span>
+                  <div className="session-badge" title={authUser.email || "Signed in"} aria-label="Signed-in session">
+                    {avatarUrl ? (
+                      <img className="session-avatar" src={avatarUrl} alt="" />
+                    ) : (
+                      <span className="session-initials" aria-hidden="true">
+                        {getInitials(getUserDisplayLabel(authUser))}
+                      </span>
+                    )}
+
+                    <span className="session-identity">
+                      <span className="session-name">{getUserDisplayLabel(authUser)}</span>
+                      {authUser.email && getUserDisplayLabel(authUser) !== authUser.email ? (
+                        <span className="session-email">{authUser.email}</span>
+                      ) : null}
+                    </span>
                   </div>
 
                   <button
-                    className="btn danger"
+                    className="session-signout"
                     type="button"
                     onClick={async () => {
+                      // Optimistically clear UI state so protected routes enforce immediately.
+                      actions.clearAuth();
+
                       try {
                         if (!supabase) {
                           actions.pushToast({
@@ -563,7 +603,9 @@ function Shell() {
                           });
                           return;
                         }
+
                         const { error } = await supabase.auth.signOut();
+
                         if (error) {
                           console.error("[Supabase Auth] signOut error", JSON.stringify(error, null, 2));
                           actions.pushToast({
@@ -571,8 +613,18 @@ function Shell() {
                             title: "Sign out failed",
                             description: error.message || "Unable to sign out.",
                           });
+                          return;
                         }
-                        // Success toast handled by onAuthStateChange SIGNED_OUT
+
+                        actions.pushToast({
+                          type: "success",
+                          title: "Signed out",
+                          description: "See you next time.",
+                          ttlMs: 2200,
+                        });
+
+                        // Redirect is also handled by onAuthStateChange SIGNED_OUT.
+                        // (We keep it there as a fallback if routing changes.)
                       } catch (e) {
                         console.error("[Supabase Auth] signOut exception", e);
                         actions.pushToast({

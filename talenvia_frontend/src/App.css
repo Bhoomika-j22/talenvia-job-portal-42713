@@ -884,44 +884,112 @@ label {
   font-size: 13px;
 }
 
-.user-chip {
+/* Session indicator (header) */
+.session-badge {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   border: 1px solid var(--border);
-  background: var(--surface);
+  background: rgba(255, 255, 255, 0.72);
   color: var(--text);
   border-radius: 999px;
-  padding: 8px 10px;
+  padding: 7px 10px;
   box-shadow: var(--shadow-sm);
-  max-width: 220px;
+  max-width: 260px;
+  min-width: 0;
 }
 
-.user-chip .avatar {
-  width: 26px;
-  height: 26px;
+[data-theme="dark"] .session-badge {
+  background: rgba(17, 28, 51, 0.60);
+}
+
+.session-avatar {
+  width: 28px;
+  height: 28px;
   border-radius: 999px;
   display: block;
   object-fit: cover;
   border: 1px solid var(--border);
+  flex: 0 0 auto;
 }
 
-.user-chip .user-email {
+.session-initials {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid rgba(124, 58, 237, 0.25);
+  background: rgba(124, 58, 237, 0.12);
+  color: var(--violet-700);
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  font-size: 12px;
+}
+
+.session-identity {
+  display: grid;
+  grid-template-rows: auto auto;
+  line-height: 1.05;
   min-width: 0;
-  max-width: 170px;
+}
+
+.session-name {
+  font-weight: 900;
+  font-size: 13px;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 190px;
+}
+
+.session-email {
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--muted);
   white-space: nowrap;
-  font-weight: 800;
-  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 190px;
+}
+
+.session-signout {
+  border: 1px solid rgba(239, 68, 68, 0.22);
+  background: rgba(239, 68, 68, 0.08);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 9px 12px;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.session-signout:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.10);
+}
+
+.session-signout:focus {
+  outline: none;
+  box-shadow: var(--shadow-sm), var(--focus);
 }
 
 @media (max-width: 720px) {
-  .user-chip {
-    max-width: 140px;
+  .session-badge {
+    max-width: 170px;
+    gap: 8px;
   }
-  .user-chip .user-email {
-    max-width: 92px;
+
+  /* Prefer showing email-only on small screens to keep header compact. */
+  .session-name {
+    max-width: 110px;
+  }
+  .session-email {
+    display: none;
   }
 }
 
