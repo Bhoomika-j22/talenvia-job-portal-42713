@@ -1,23 +1,21 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useAppState } from "../state/AppState";
 
 /**
  * Jobs page (listing)
  * - UI-only demo listing to match the app's preview-mode behavior.
- * - Provides search + richer filters and lets the user "Save as application"
+ * - Provides filters and lets the user "Save as application"
  *   by adding an item into the Applications pipeline.
  *
- * Enhancements:
- * - Debounced search input (client-side)
- * - Filters: location, role/title, job type, experience level
- * - Active filters reflected as removable chips
+ * Filters:
+ * - Job type
+ * - Experience level
+ *
+ * Note: Global header search (routes to /search) is intentionally not modified here.
  */
 
 const JOB_TYPES = ["Full-time", "Part-time", "Contract", "Internship"];
-const WORK_MODES = ["Remote", "Hybrid", "Onsite"];
 const EXPERIENCE_LEVELS = ["Entry", "Mid", "Senior", "Lead"];
-
-const SEARCH_DEBOUNCE_MS = 250;
 
 // Simple demo data; later can be replaced by API calls (REACT_APP_API_BASE / backend).
 const DEMO_JOBS = [
@@ -87,54 +85,22 @@ function normalize(str) {
   return String(str || "").trim().toLowerCase();
 }
 
-function uniq(arr) {
-  return Array.from(new Set(arr)).filter(Boolean);
-}
-
 // PUBLIC_INTERFACE
 export default function JobsPage() {
-  /** Jobs listing page with debounced search, rich filters, and a "Save as application" action. */
+  /** Jobs listing page with filters and a "Save as application" action (in-page search and some filters removed by request). */
   const { state, actions } = useAppState();
 
-  // Raw input (immediate) + debounced query used for filtering
-  const [queryInput, setQueryInput] = useState("");
-  const [query, setQuery] = useState("");
-
-  // Filters
-  const [location, setLocation] = useState("");
-  const [titleFilter, setTitleFilter] = useState("");
+  // Filters (kept)
   const [jobType, setJobType] = useState("");
   const [experienceLevel, setExperienceLevel] = useState("");
 
-  useEffect(() => {
-    const t = setTimeout(() => setQuery(queryInput), SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(t);
-  }, [queryInput]);
-
-  const locationOptions = useMemo(() => uniq(DEMO_JOBS.map((j) => j.location)).sort((a, b) => a.localeCompare(b)), []);
-  const titleOptions = useMemo(() => uniq(DEMO_JOBS.map((j) => j.title)).sort((a, b) => a.localeCompare(b)), []);
-
   const filtered = useMemo(() => {
-    const q = normalize(query);
-
     return DEMO_JOBS.filter((j) => {
-      const matchesQuery =
-        !q ||
-        normalize(j.title).includes(q) ||
-        normalize(j.company).includes(q) ||
-        normalize(j.location).includes(q) ||
-        normalize(j.jobType).includes(q) ||
-        normalize(j.experienceLevel).includes(q) ||
-        (j.tags || []).some((t) => normalize(t).includes(q));
-
-      const matchesLocation = !location || j.location === location;
-      const matchesTitle = !titleFilter || j.title === titleFilter;
       const matchesJobType = !jobType || j.jobType === jobType;
       const matchesExperience = !experienceLevel || j.experienceLevel === experienceLevel;
-
-      return matchesQuery && matchesLocation && matchesTitle && matchesJobType && matchesExperience;
+      return matchesJobType && matchesExperience;
     });
-  }, [query, location, titleFilter, jobType, experienceLevel]);
+  }, [jobType, experienceLevel]);
 
   const alreadyTracked = useMemo(() => {
     // In preview mode, "tracked" means it exists in Applications by company+role.
@@ -168,23 +134,17 @@ export default function JobsPage() {
     });
   };
 
-  const hasActiveFilters = Boolean(queryInput || location || titleFilter || jobType || experienceLevel);
+  const hasActiveFilters = Boolean(jobType || experienceLevel);
 
   const activeChips = useMemo(() => {
     const chips = [];
-    if (queryInput) chips.push({ key: "q", label: `Search: "${queryInput}"`, onRemove: () => setQueryInput("") });
-    if (location) chips.push({ key: "loc", label: `Location: ${location}`, onRemove: () => setLocation("") });
-    if (titleFilter) chips.push({ key: "title", label: `Role: ${titleFilter}`, onRemove: () => setTitleFilter("") });
     if (jobType) chips.push({ key: "jt", label: `Type: ${jobType}`, onRemove: () => setJobType("") });
     if (experienceLevel)
       chips.push({ key: "exp", label: `Experience: ${experienceLevel}`, onRemove: () => setExperienceLevel("") });
     return chips;
-  }, [queryInput, location, titleFilter, jobType, experienceLevel]);
+  }, [jobType, experienceLevel]);
 
   const resetAll = () => {
-    setQueryInput("");
-    setLocation("");
-    setTitleFilter("");
     setJobType("");
     setExperienceLevel("");
   };
@@ -201,44 +161,6 @@ export default function JobsPage() {
 
       <div className="card full" style={{ marginTop: 12 }}>
         <div className="row">
-          <div className="field" style={{ maxWidth: 520 }}>
-            <label htmlFor="jobsSearch">Search</label>
-            <input
-              id="jobsSearch"
-              className="input"
-              value={queryInput}
-              placeholder="Search by title, company, location, tag, job type..."
-              onChange={(e) => setQueryInput(e.target.value)}
-            />
-            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: -2 }}>
-              Filtering is client-side • Debounce: {SEARCH_DEBOUNCE_MS}ms
-            </div>
-          </div>
-
-          <div className="field" style={{ maxWidth: 240 }}>
-            <label htmlFor="locationFilter">Location</label>
-            <select id="locationFilter" className="select" value={location} onChange={(e) => setLocation(e.target.value)}>
-              <option value="">All</option>
-              {locationOptions.map((loc) => (
-                <option key={loc} value={loc}>
-                  {loc}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="field" style={{ maxWidth: 280 }}>
-            <label htmlFor="titleFilter">Role / Title</label>
-            <select id="titleFilter" className="select" value={titleFilter} onChange={(e) => setTitleFilter(e.target.value)}>
-              <option value="">All</option>
-              {titleOptions.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </div>
-
           <div className="field" style={{ maxWidth: 220 }}>
             <label htmlFor="jobTypeFilter">Job type</label>
             <select id="jobTypeFilter" className="select" value={jobType} onChange={(e) => setJobType(e.target.value)}>
@@ -366,7 +288,7 @@ export default function JobsPage() {
           {filtered.length === 0 ? (
             <div className="card full">
               <h4>No jobs found</h4>
-              <p>Try a different search term or broaden the filters.</p>
+              <p>Try resetting filters to broaden results.</p>
               {hasActiveFilters ? (
                 <div className="row" style={{ marginTop: 12 }}>
                   <button className="primary-btn" type="button" onClick={resetAll}>
