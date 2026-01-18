@@ -5,6 +5,10 @@ import { isSupabaseConfigured, supabase } from "../lib/supabaseClient";
  * These are intentionally "safe by default":
  * - If Supabase isn't configured, they return { ok:false, reason:'not_configured' } (no throw).
  * - If a request fails, they return ok:false with an error summary (no throw).
+ *
+ * Some helpers (like ensureUserRow) are intentionally strict and WILL throw:
+ * those are meant to be used by auth flows and higher-level code that wants to
+ * fail fast and surface explicit errors.
  */
 
 function safeTrim(value) {
@@ -14,6 +18,110 @@ function safeTrim(value) {
 function normalizeNullable(value) {
   const s = safeTrim(value);
   return s ? s : null;
+}
+
+// PUBLIC_INTERFACE
+export async function ensureUserRow(userPatch = {}) {
+  /**
+   * Ensures a `public.users` row exists for the *currently authenticated* user
+   * and returns the inserted/updated row.
+   *
+   * RLS + schema expectations for this project:
+   * - `public.users.id uuid primary key default auth.uid()`
+   * - RLS allows CRUD only when `id = auth.uid()`
+   *
+   * Behavior:
+   * - Requires an active authenticated session (throws if missing).
+   * - First tries to SELECT the user's row.
+   * - If missing, INSERTS a new row (omits `id` so DEFAULT auth.uid() is used).
+   * - If present, UPDATES allowed fields and bumps `updated_at` when provided by schema.
+   * - Always returns the resulting row using `.select("*").single()`.
+   *
+   * Note: This function throws on any misconfiguration/auth/database error so callers
+   * can decide how to handle it (toast, retry, redirect, etc).
+   */
+  if (!isSupabaseConfigured() || !supabase) {
+    throw new Error("Supabase not configured (missing REACT_APP_SUPABASE_URL/KEY).");
+  }
+
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) {
+    throw new Error(`Failed to read Supabase session: ${sessionError.message}`);
+  }
+
+  const session = sessionData?.session;
+  if (!session?.user?.id) {
+    // Must be called only AFTER successful auth; required for auth.uid() RLS checks.
+    throw new Error("No authenticated Supabase session. Call ensureUserRow after login/signup.");
+  }
+
+  const uid = session.user.id;
+
+  // Map patch fields into DB columns we know exist in this project.
+  const basePayload = {
+    name: normalizeNullable(userPatch.name),
+    email: normalizeNullable(userPatch.email ?? session.user.email),
+    phone_number: normalizeNullable(userPatch.phone_number ?? userPatch.phone),
+    profile_photo_url: normalizeNullable(userPatch.profile_photo_url),
+  };
+
+  // Remove undefined keys so we don't unintentionally overwrite columns with null.
+  const cleanedPayload = Object.fromEntries(
+    Object.entries(basePayload).filter(([, v]) => v !== undefined)
+  );
+
+  // 1) Try to read existing row
+  const { data: existingRow, error: selectError } = await supabase
+    .from("users")
+    .select("*")
+    .eq("id", uid)
+    .maybeSingle();
+
+  // Under RLS, a missing policy can present as select error. Bubble it up explicitly.
+  if (selectError) {
+    throw new Error(`Failed to read user row (RLS?): ${selectError.message}`);
+  }
+
+  // 2) Insert if missing
+  if (!existingRow) {
+    const insertRow = {
+      ...cleanedPayload,
+      // IMPORTANT: omit `id` so DEFAULT auth.uid() populates it (matches RLS WITH CHECK).
+      // Timestamps: prefer server-side defaults/triggers; provide updated_at only if schema expects it.
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data: inserted, error: insertError } = await supabase
+      .from("users")
+      .insert(insertRow)
+      .select("*")
+      .single();
+
+    if (insertError) {
+      throw new Error(`Failed to insert user row: ${insertError.message}`);
+    }
+
+    return inserted;
+  }
+
+  // 3) Update existing row (avoid id changes; keep it strictly self-owned)
+  const updateRow = {
+    ...cleanedPayload,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data: updated, error: updateError } = await supabase
+    .from("users")
+    .update(updateRow)
+    .eq("id", uid)
+    .select("*")
+    .single();
+
+  if (updateError) {
+    throw new Error(`Failed to update user row: ${updateError.message}`);
+  }
+
+  return updated;
 }
 
 // PUBLIC_INTERFACE
