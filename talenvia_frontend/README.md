@@ -36,6 +36,12 @@ Supabase (optional):
 - `REACT_APP_SUPABASE_URL` - your Supabase project URL
 - `REACT_APP_SUPABASE_ANON_KEY` - your Supabase anon/public key
 
+Supabase Storage (for resume uploads):
+
+- Create a Storage bucket named `resumes`
+- Recommended bucket setting: **public** (so `getPublicUrl()` works for viewing resumes)
+- Files are stored per-user at: `resumes/{userId}/resume.{ext}`
+
 If these are not provided, the app will continue to work without Supabase (the integration is scaffold-only).
 
 ## Customization

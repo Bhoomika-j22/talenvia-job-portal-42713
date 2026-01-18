@@ -1,10 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useAppState } from "../state/AppState";
 import EditableSection from "../components/EditableSection";
-import {
-  loadProfileAndSkillsFromSupabase,
-  saveProfileAndSkillsToSupabase,
-} from "../utils/profilePersistence";
+import { loadProfileAndSkillsFromSupabase, saveProfileAndSkillsToSupabase } from "../utils/profilePersistence";
+import { uploadOrReplaceResume, deleteResumeByPath } from "../utils/resumeStorage";
+import { updateResumeMetadataInSupabase } from "../utils/resumePersistence";
 
 /**
  * This page is the unified Profile & Skills screen.
@@ -123,14 +122,11 @@ export default function ProfileAndSkillsPage() {
     prefEmploymentType: "",
   });
 
-  // RESUME (UI-only, but editable section should still have Save/Cancel semantics)
-  // Persist in profile.resume (object) so it behaves like other sections in preview mode.
-  const [resumeDraft, setResumeDraft] = useState(() => ({
-    fileName: state.profile.resume?.fileName || "",
-    // Store as string for preview (no actual upload); allow a link if user wants to paste one.
-    link: state.profile.resume?.link || "",
-  }));
-  const [resumeTouched, setResumeTouched] = useState({ fileName: false, link: false });
+  // RESUME (Supabase Storage-backed)
+  // We keep the canonical persisted resume in state.profile.resume.
+  const [resumeSelectedFile, setResumeSelectedFile] = useState(null);
+  const [resumeBusy, setResumeBusy] = useState(false);
+  const [resumeDeleteBusy, setResumeDeleteBusy] = useState(false);
 
   // KEY SKILLS (persist via AppState skills list)
   const [skillsDraft, setSkillsDraft] = useState(() => state.skills.map((s) => ({ ...s })));
@@ -502,41 +498,98 @@ export default function ProfileAndSkillsPage() {
     }
   };
 
-  const saveResume = () => {
-    setResumeTouched({ fileName: true, link: true });
-
-    const nextErrors = validateResume(resumeDraft);
-    setErrors((p) => ({ ...p, ...nextErrors }));
-
-    const hasAnyError = Object.values(nextErrors).some(Boolean);
-    if (hasAnyError) {
-      actions.pushToast({
-        type: "error",
-        title: "Please fix the highlighted fields",
-        description: "Resume details are missing or invalid.",
-      });
+  const saveResume = async () => {
+    if (!resumeSelectedFile) {
+      actions.pushToast({ type: "info", title: "Select a file", description: "Choose a resume file to upload." });
       return;
     }
 
-    const nextProfile = {
-      ...state.profile,
-      resume: {
-        fileName: String(resumeDraft.fileName || "").trim(),
-        link: String(resumeDraft.link || "").trim(),
-      },
-    };
+    setResumeBusy(true);
+    try {
+      const up = await uploadOrReplaceResume(resumeSelectedFile);
 
-    actions.updateProfile(nextProfile);
-    void persistToSupabaseBestEffort(nextProfile, state.skills);
+      if (!up.ok) {
+        if (up.reason === "not_configured" || up.reason === "no_user") {
+          actions.pushToast({
+            type: "error",
+            title: "Resume upload unavailable",
+            description: "Supabase is not configured or you're not signed in.",
+          });
+          return;
+        }
+
+        actions.pushToast({
+          type: "error",
+          title: "Resume upload failed",
+          description: up.error?.message || "Please try again.",
+        });
+        return;
+      }
+
+      const nextProfile = { ...state.profile, resume: up.resume };
+      actions.updateProfile(nextProfile);
+      setResumeSelectedFile(null);
+
+      // Persist both:
+      // (a) best-effort full profile+skills sync (existing mechanism)
+      void persistToSupabaseBestEffort(nextProfile, state.skills);
+      // (b) explicit resume patch to avoid clobber risk in case of concurrent edits elsewhere
+      void updateResumeMetadataInSupabase(up.resume);
+
+      actions.pushToast({
+        type: "success",
+        title: state.profile.resume?.path ? "Resume replaced" : "Resume uploaded",
+        description: up.resume.fileName || "Your resume is stored securely.",
+        ttlMs: 2500,
+      });
+    } finally {
+      setResumeBusy(false);
+    }
   };
 
   const resetResume = () => {
-    setResumeDraft({
-      fileName: state.profile.resume?.fileName || "",
-      link: state.profile.resume?.link || "",
-    });
-    setResumeTouched({ fileName: false, link: false });
-    setErrors((p) => ({ ...p, resumeFileName: "", resumeLink: "" }));
+    setResumeSelectedFile(null);
+  };
+
+  const deleteResume = async () => {
+    const existingPath = state.profile.resume?.path;
+    if (!existingPath) {
+      actions.pushToast({ type: "info", title: "No resume to delete", description: "Upload a resume first." });
+      return;
+    }
+
+    setResumeDeleteBusy(true);
+    try {
+      const del = await deleteResumeByPath(existingPath);
+
+      if (!del.ok) {
+        if (del.reason === "not_configured" || del.reason === "no_user") {
+          actions.pushToast({
+            type: "error",
+            title: "Resume delete unavailable",
+            description: "Supabase is not configured or you're not signed in.",
+          });
+          return;
+        }
+
+        actions.pushToast({
+          type: "error",
+          title: "Resume delete failed",
+          description: del.error?.message || "Please try again.",
+        });
+        return;
+      }
+
+      const nextProfile = { ...state.profile, resume: null };
+      actions.updateProfile(nextProfile);
+
+      void persistToSupabaseBestEffort(nextProfile, state.skills);
+      void updateResumeMetadataInSupabase(null);
+
+      actions.pushToast({ type: "success", title: "Resume deleted", description: "Your resume was removed.", ttlMs: 2200 });
+    } finally {
+      setResumeDeleteBusy(false);
+    }
   };
 
   const saveProfile = () => {
@@ -958,18 +1011,28 @@ export default function ProfileAndSkillsPage() {
           viewContent={
             <div className="grid" style={{ gridTemplateColumns: "repeat(12, 1fr)", gap: 12 }}>
               <div className="card third" style={{ gridColumn: "span 4" }}>
-                <h4 style={{ marginTop: 0 }}>File name</h4>
+                <h4 style={{ marginTop: 0 }}>File</h4>
                 <p style={{ color: "var(--muted)" }}>{state.profile.resume?.fileName || "—"}</p>
               </div>
 
-              <div className="card third" style={{ gridColumn: "span 8" }}>
-                <h4 style={{ marginTop: 0 }}>Link</h4>
-                {state.profile.resume?.link ? (
-                  <p style={{ margin: 0 }}>
-                    <a href={state.profile.resume.link} target="_blank" rel="noreferrer" className="btn">
-                      Open resume link
+              <div className="card third" style={{ gridColumn: "span 5" }}>
+                <h4 style={{ marginTop: 0 }}>Last updated</h4>
+                <p style={{ color: "var(--muted)" }}>
+                  {state.profile.resume?.updatedAt ? new Date(state.profile.resume.updatedAt).toLocaleString() : "—"}
+                </p>
+              </div>
+
+              <div className="card third" style={{ gridColumn: "span 3" }}>
+                <h4 style={{ marginTop: 0 }}>Actions</h4>
+                {state.profile.resume?.url ? (
+                  <div className="row" style={{ marginTop: 8 }}>
+                    <a href={state.profile.resume.url} target="_blank" rel="noreferrer" className="btn">
+                      View
                     </a>
-                  </p>
+                    <button className="btn danger" type="button" onClick={deleteResume} disabled={resumeDeleteBusy}>
+                      {resumeDeleteBusy ? "Deleting…" : "Delete"}
+                    </button>
+                  </div>
                 ) : (
                   <p style={{ color: "var(--muted)" }}>—</p>
                 )}
@@ -977,7 +1040,7 @@ export default function ProfileAndSkillsPage() {
 
               <div className="card full" style={{ gridColumn: "1 / -1" }}>
                 <p style={{ margin: 0, color: "var(--muted)" }}>
-                  Preview mode: this does not upload files. Save stores a file name + optional link locally; Cancel reverts.
+                  Upload a PDF/DOC/DOCX resume. If a resume exists, uploading again will replace it.
                 </p>
               </div>
             </div>
@@ -985,73 +1048,60 @@ export default function ProfileAndSkillsPage() {
           editContent={
             <>
               <p style={{ margin: "6px 0 0", color: "var(--muted)" }}>
-                In this preview, enter a resume file name and optionally a public link (Google Drive, portfolio site, etc.).
+                Choose a resume file to upload to Supabase Storage. Supported: .pdf, .doc, .docx (max 10MB).
               </p>
 
-              <div className="row" style={{ marginTop: 10 }}>
-                <div className="field">
-                  <label htmlFor="ps-resume-filename">Resume file name</label>
+              <div className="row" style={{ marginTop: 10, alignItems: "flex-end" }}>
+                <div className="field" style={{ flex: 1, minWidth: 260 }}>
+                  <label htmlFor="ps-resume-file">Resume file</label>
                   <input
-                    id="ps-resume-filename"
-                    className={getInputClassName("resumeFileName")}
-                    placeholder="e.g. Aisha_Rahman_Resume.pdf"
-                    value={resumeDraft.fileName}
+                    id="ps-resume-file"
+                    className="input"
+                    type="file"
+                    accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     onChange={(e) => {
-                      const v = e.target.value;
-                      setResumeDraft((p) => ({ ...p, fileName: v }));
-                      if (resumeTouched.fileName) {
-                        const next = validateResume({ ...resumeDraft, fileName: v });
-                        setErrors((p) => ({ ...p, resumeFileName: next.resumeFileName }));
-                      }
+                      const f = e.target.files?.[0] || null;
+                      setResumeSelectedFile(f);
                     }}
-                    onBlur={() => {
-                      setResumeTouched((p) => ({ ...p, fileName: true }));
-                      const next = validateResume(resumeDraft);
-                      setErrors((p) => ({ ...p, resumeFileName: next.resumeFileName }));
-                    }}
-                    aria-invalid={Boolean(resumeTouched.fileName && errors.resumeFileName)}
-                    aria-describedby={resumeTouched.fileName && errors.resumeFileName ? errorId("resumeFileName") : undefined}
+                    disabled={resumeBusy || resumeDeleteBusy}
                   />
-                  {resumeTouched.fileName && errors.resumeFileName ? (
-                    <p className="field-error" id={errorId("resumeFileName")}>
-                      {errors.resumeFileName}
-                    </p>
-                  ) : null}
+                  <p style={{ margin: "6px 0 0", color: "var(--muted)", fontSize: 12 }}>
+                    {resumeSelectedFile ? `Selected: ${resumeSelectedFile.name}` : "No file selected."}
+                  </p>
                 </div>
 
-                <div className="field">
-                  <label htmlFor="ps-resume-link">Resume link (optional)</label>
-                  <input
-                    id="ps-resume-link"
-                    className={getInputClassName("resumeLink")}
-                    placeholder="https://..."
-                    value={resumeDraft.link}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setResumeDraft((p) => ({ ...p, link: v }));
-                      if (resumeTouched.link) {
-                        const next = validateResume({ ...resumeDraft, link: v });
-                        setErrors((p) => ({ ...p, resumeLink: next.resumeLink }));
-                      }
-                    }}
-                    onBlur={() => {
-                      setResumeTouched((p) => ({ ...p, link: true }));
-                      const next = validateResume(resumeDraft);
-                      setErrors((p) => ({ ...p, resumeLink: next.resumeLink }));
-                    }}
-                    aria-invalid={Boolean(resumeTouched.link && errors.resumeLink)}
-                    aria-describedby={resumeTouched.link && errors.resumeLink ? errorId("resumeLink") : undefined}
-                  />
-                  {resumeTouched.link && errors.resumeLink ? (
-                    <p className="field-error" id={errorId("resumeLink")}>
-                      {errors.resumeLink}
+                <button className="primary-btn" type="button" onClick={saveResume} disabled={resumeBusy || !resumeSelectedFile}>
+                  {resumeBusy ? "Uploading…" : state.profile.resume?.path ? "Replace resume" : "Upload resume"}
+                </button>
+
+                {state.profile.resume?.path ? (
+                  <button className="btn danger" type="button" onClick={deleteResume} disabled={resumeDeleteBusy || resumeBusy}>
+                    {resumeDeleteBusy ? "Deleting…" : "Delete"}
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="row" style={{ marginTop: 10 }}>
+                <div className="card full">
+                  <h4 style={{ marginTop: 0 }}>Current resume</h4>
+                  {state.profile.resume?.url ? (
+                    <p style={{ margin: 0 }}>
+                      <a href={state.profile.resume.url} target="_blank" rel="noreferrer" className="btn">
+                        Open current resume
+                      </a>
+                      <span style={{ marginLeft: 10, color: "var(--muted)" }}>{state.profile.resume.fileName}</span>
                     </p>
-                  ) : null}
+                  ) : (
+                    <p style={{ margin: 0, color: "var(--muted)" }}>No resume uploaded yet.</p>
+                  )}
                 </div>
               </div>
             </>
           }
-          onSave={saveResume}
+          onSave={() => {
+            // EditableSection expects a sync callback; we handle real save via button to support loading states.
+            void saveResume();
+          }}
           onCancel={resetResume}
         />
 
