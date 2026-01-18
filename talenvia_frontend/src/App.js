@@ -14,8 +14,9 @@ import SettingsPage from "./pages/SettingsPage";
 import AboutPage from "./pages/AboutPage";
 import HowItWorksPage from "./pages/HowItWorksPage";
 import SearchResultsPage from "./pages/SearchResultsPage";
-import { supabaseHealthCheck } from "./utils/supabaseHelpers";
-import { getSupabaseConfigStatus } from "./lib/supabaseClient";
+import { ensureUserRow, supabaseHealthCheck } from "./utils/supabaseHelpers";
+import { getSupabaseConfigStatus, supabase } from "./lib/supabaseClient";
+import { signInWithGoogleOAuth } from "./utils/authHelpers";
 
 /**
  * Talenvia React Frontend
@@ -234,6 +235,71 @@ function Shell() {
     document.documentElement.setAttribute("data-theme", state.settings.theme || "light");
   }, [state.settings.theme]);
 
+  // Supabase session + auth events:
+  // - On initial load, read existing session (including one set via OAuth redirect).
+  // - Subscribe to auth state changes.
+  // - After sign-in, ensure `public.users` row exists (required for RLS-backed profile sync).
+  useEffect(() => {
+    let cancelled = false;
+
+    const status = getSupabaseConfigStatus();
+    if (!status.configured || !supabase) return undefined;
+
+    (async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) {
+          actions.pushToast({ type: "error", title: "Auth error", description: error.message });
+          return;
+        }
+        if (!cancelled && data?.session) {
+          actions.setAuthSession(data.session);
+        }
+      } catch {
+        // no-op: keep UI functional
+      }
+    })();
+
+    const { data: sub } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (cancelled) return;
+
+      actions.setAuthSession(session || null);
+
+      if (event === "SIGNED_IN" && session?.user?.id) {
+        actions.pushToast({
+          type: "success",
+          title: "Signed in",
+          description: `Welcome${session.user.email ? `, ${session.user.email}` : ""}!`,
+          ttlMs: 2200,
+        });
+
+        try {
+          await ensureUserRow({
+            name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || null,
+            email: session.user.email || null,
+            profile_photo_url: session.user.user_metadata?.avatar_url || null,
+          });
+        } catch (e) {
+          actions.pushToast({
+            type: "error",
+            title: "Profile setup failed",
+            description: e instanceof Error ? e.message : String(e),
+            ttlMs: 5000,
+          });
+        }
+      }
+
+      if (event === "SIGNED_OUT") {
+        actions.pushToast({ type: "info", title: "Signed out", description: "You have been signed out." });
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      sub?.subscription?.unsubscribe?.();
+    };
+  }, [actions]);
+
   // Non-blocking Supabase check (scaffold only; does not change any features/routes/UI).
   useEffect(() => {
     let cancelled = false;
@@ -388,6 +454,32 @@ function Shell() {
               <NavLink className="icon-btn" to="/notifications" aria-label="Notifications">
                 🔔 {unreadCount ? <span className="pill" style={{ marginLeft: 8 }}>{unreadCount}</span> : null}
               </NavLink>
+
+              <button
+                className="btn"
+                type="button"
+                onClick={async () => {
+                  const res = await signInWithGoogleOAuth();
+                  if (!res.ok) {
+                    actions.pushToast({
+                      type: "error",
+                      title: "Google sign-in failed",
+                      description: res.error?.message || "Unable to start OAuth flow.",
+                      ttlMs: 4500,
+                    });
+                    return;
+                  }
+                  actions.pushToast({
+                    type: "info",
+                    title: "Redirecting…",
+                    description: "Continue with Google to finish signing in.",
+                    ttlMs: 2500,
+                  });
+                }}
+                aria-label="Sign in with Google"
+              >
+                Continue with Google
+              </button>
 
               <button className="icon-btn" onClick={toggleTheme} aria-label="Toggle theme" type="button">
                 {state.settings.theme === "light" ? "🌙" : "☀️"}

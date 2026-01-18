@@ -18,6 +18,11 @@ function AppStateProviderInner({ children }) {
   const [state, setState] = useState(() => loadAppState());
   const [toasts, setToasts] = useState([]);
 
+  // Supabase auth session (kept separate from persisted demo state).
+  // We intentionally keep only what we need for UI gating and profile bootstrap.
+  const [authSession, setAuthSession] = useState(null);
+  const [authUser, setAuthUser] = useState(null);
+
   // Router navigation for global search (keeps header search UX consistent across pages).
   const navigate = useNavigate();
 
@@ -190,13 +195,27 @@ function AppStateProviderInner({ children }) {
       },
 
       // PUBLIC_INTERFACE
+      setAuthSession(session) {
+        /** Stores current Supabase auth session (or null on sign-out). */
+        setAuthSession(session || null);
+        setAuthUser(session?.user || null);
+      },
+
+      // PUBLIC_INTERFACE
+      clearAuth() {
+        /** Clears auth session + user in UI state. */
+        setAuthSession(null);
+        setAuthUser(null);
+      },
+
+      // PUBLIC_INTERFACE
       pushToast,
     };
   }, [navigate]);
 
   const value = useMemo(
-    () => ({ state, setState, actions, toasts, globalSearchQuery }),
-    [state, actions, toasts, globalSearchQuery]
+    () => ({ state, setState, actions, toasts, globalSearchQuery, authSession, authUser }),
+    [state, actions, toasts, globalSearchQuery, authSession, authUser]
   );
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
