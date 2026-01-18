@@ -8,6 +8,7 @@ import DashboardPage from "./pages/DashboardPage";
 import ProfileAndSkillsPage from "./pages/ProfileAndSkillsPage";
 import MockTestsPage from "./pages/MockTestsPage";
 import ApplicationsPage from "./pages/ApplicationsPage";
+import JobsPage from "./pages/JobsPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import SettingsPage from "./pages/SettingsPage";
 import AboutPage from "./pages/AboutPage";
@@ -99,6 +100,7 @@ function Shell() {
                 Dashboard <span className="pill">Home</span>
               </NavLink>
               <NavLink to="/profile-skills">Profile &amp; Skills</NavLink>
+              <NavLink to="/jobs">Jobs</NavLink>
               <NavLink to="/mock-tests">Mock Tests</NavLink>
               <NavLink to="/applications">Applications</NavLink>
               <NavLink to="/notifications">
@@ -143,6 +145,7 @@ function Shell() {
               <Route path="/profile" element={<Navigate to="/profile-skills" replace />} />
               <Route path="/skills" element={<Navigate to="/profile-skills" replace />} />
 
+              <Route path="/jobs" element={<JobsPage />} />
               <Route path="/mock-tests" element={<MockTestsPage />} />
               <Route path="/applications" element={<ApplicationsPage />} />
               <Route path="/notifications" element={<NotificationsPage />} />
