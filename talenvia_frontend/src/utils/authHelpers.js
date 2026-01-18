@@ -1,46 +1,29 @@
-import { isSupabaseConfigured, supabase } from "../lib/supabaseClient";
-
 /**
- * Auth helpers (Supabase OAuth).
+ * Auth helpers (Supabase).
  *
- * We keep these in a small module so UI components (App header, auth screens)
- * can call stable functions without duplicating URL/session checks.
+ * Google OAuth has been removed from the product auth flow.
+ * This module is kept as a small compatibility layer so any stale imports
+ * do not break the build (returns a consistent "not_supported" response).
  */
 
 // PUBLIC_INTERFACE
 export function getOAuthRedirectUrl() {
-  /** Returns the redirect URL to use for Supabase OAuth flows. */
+  /** Returns the redirect URL to use for Supabase auth flows that require a redirect URL. */
   if (typeof window === "undefined") return "";
-  // As requested: use window.location.origin (works for dev + deployed)
   return window.location.origin;
 }
 
 // PUBLIC_INTERFACE
 export async function signInWithGoogleOAuth() {
   /**
-   * Starts Supabase Google OAuth sign-in.
+   * Compatibility stub.
    *
-   * Returns:
-   * - { ok: true }
-   * - { ok: false, reason: 'not_configured' | 'error', error?: { message } }
+   * Google OAuth is intentionally not supported in this app.
+   * Callers should remove UI that relies on this and use email/password auth instead.
    */
-  if (!isSupabaseConfigured() || !supabase) {
-    return { ok: false, reason: "not_configured", error: { message: "Supabase is not configured." } };
-  }
-
-  try {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: getOAuthRedirectUrl() },
-    });
-
-    if (error) {
-      return { ok: false, reason: "error", error: { message: error.message } };
-    }
-
-    // NOTE: On success, Supabase will redirect away; session is handled on return via detectSessionInUrl
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, reason: "error", error: { message: e instanceof Error ? e.message : String(e) } };
-  }
+  return {
+    ok: false,
+    reason: "not_supported",
+    error: { message: "Google OAuth is not supported. Use email/password sign-in." },
+  };
 }

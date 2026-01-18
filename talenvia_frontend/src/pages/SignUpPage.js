@@ -2,12 +2,10 @@ import React, { useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAppState } from "../state/AppState";
 import { isSupabaseConfigured, supabase } from "../lib/supabaseClient";
-import { signInWithGoogleOAuth } from "../utils/authHelpers";
 
 /**
  * SignUpPage
  * - Name, email, password, confirm password
- * - Google OAuth
  * - Redirect to dashboard after successful signup/signin (or prompt for email confirmation)
  */
 
@@ -69,29 +67,6 @@ function IconLock() {
   );
 }
 
-function IconGoogle() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        fill="#EA4335"
-        d="M12 10.2v3.7h5.2c-.2 1.2-.9 2.2-2 2.9v2.4h3.2c1.9-1.8 3-4.4 3-7.5 0-.7-.1-1.2-.2-1.8H12z"
-      />
-      <path
-        fill="#34A853"
-        d="M12 22c2.7 0 5-0.9 6.7-2.5l-3.2-2.4c-.9.6-2.1 1-3.5 1-2.7 0-5-1.8-5.8-4.3H2.9v2.5C4.6 19.7 8.1 22 12 22z"
-      />
-      <path
-        fill="#4A90E2"
-        d="M6.2 13.8c-.2-.6-.3-1.2-.3-1.8s.1-1.2.3-1.8V7.7H2.9C2.3 8.9 2 10.4 2 12s.3 3.1.9 4.3l3.3-2.5z"
-      />
-      <path
-        fill="#FBBC05"
-        d="M12 5.9c1.5 0 2.8.5 3.9 1.5l2.9-2.9C17 2.7 14.7 2 12 2 8.1 2 4.6 4.3 2.9 7.7l3.3 2.5c.8-2.5 3.1-4.3 5.8-4.3z"
-      />
-    </svg>
-  );
-}
-
 function useRedirectTarget() {
   const location = useLocation();
   const params = new URLSearchParams(location.search);
@@ -101,7 +76,7 @@ function useRedirectTarget() {
 
 // PUBLIC_INTERFACE
 export default function SignUpPage() {
-  /** Dedicated sign-up page with email/password and Google OAuth. */
+  /** Dedicated sign-up page with email/password. */
   const { actions, authUser } = useAppState();
   const navigate = useNavigate();
   const redirectTo = useRedirectTarget();
@@ -185,9 +160,7 @@ export default function SignUpPage() {
       actions.pushToast({
         type: "success",
         title: needsConfirm ? "Check your email" : "Account created",
-        description: needsConfirm
-          ? "Confirm your email to finish signing in."
-          : "You're signed in. Redirecting…",
+        description: needsConfirm ? "Confirm your email to finish signing in." : "You're signed in. Redirecting…",
         ttlMs: 4500,
       });
 
@@ -311,39 +284,6 @@ export default function SignUpPage() {
               {submitting ? "Please wait…" : "Create account"}
             </button>
           </div>
-
-          <div className="auth-divider" aria-hidden="true">
-            <span>or</span>
-          </div>
-
-          <button
-            className="btn google-btn"
-            type="button"
-            disabled={submitting}
-            onClick={async () => {
-              const res = await signInWithGoogleOAuth();
-              if (!res.ok) {
-                actions.pushToast({
-                  type: "error",
-                  title: "Google sign-in failed",
-                  description: res.error?.message || "Unable to start OAuth flow.",
-                  ttlMs: 5000,
-                });
-                return;
-              }
-              actions.pushToast({
-                type: "info",
-                title: "Redirecting…",
-                description: "Continue with Google to finish signing in.",
-                ttlMs: 2500,
-              });
-            }}
-          >
-            <span className="google-icon" aria-hidden="true">
-              <IconGoogle />
-            </span>
-            Continue with Google
-          </button>
 
           {!supabaseReady ? (
             <div className="auth-warning" role="status">

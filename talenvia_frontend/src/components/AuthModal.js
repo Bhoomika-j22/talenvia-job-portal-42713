@@ -1,11 +1,10 @@
 import React, { useMemo, useState } from "react";
 import Modal from "./Modal";
 import { isSupabaseConfigured, supabase } from "../lib/supabaseClient";
-import { signInWithGoogleOAuth } from "../utils/authHelpers";
 
 /**
  * AuthModal
- * - Provides email/password sign-in and sign-up flows alongside Google OAuth
+ * - Provides email/password sign-in and sign-up flows
  * - Does NOT mutate session directly; relies on existing onAuthStateChange in App.js
  * - Uses existing toasts via `actions.pushToast`
  */
@@ -111,9 +110,7 @@ export default function AuthModal({ mode = "signin", onClose, actions }) {
         actions?.pushToast?.({
           type: "success",
           title: needsConfirm ? "Check your email" : "Account created",
-          description: needsConfirm
-            ? "Confirm your email to finish signing in."
-            : "You’re signed in. Setting up your profile…",
+          description: needsConfirm ? "Confirm your email to finish signing in." : "You’re signed in. Setting up your profile…",
           ttlMs: 4500,
         });
 
@@ -213,38 +210,6 @@ export default function AuthModal({ mode = "signin", onClose, actions }) {
 
           <button className="primary-btn" type="button" onClick={handleEmailPassword} disabled={submitting}>
             {submitting ? "Please wait…" : tab === "signin" ? "Sign in" : "Create account"}
-          </button>
-        </div>
-
-        <div className="auth-divider" aria-hidden="true">
-          <span>or</span>
-        </div>
-
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button
-            className="btn"
-            type="button"
-            disabled={submitting}
-            onClick={async () => {
-              const res = await signInWithGoogleOAuth();
-              if (!res.ok) {
-                actions?.pushToast?.({
-                  type: "error",
-                  title: "Google sign-in failed",
-                  description: res.error?.message || "Unable to start OAuth flow.",
-                  ttlMs: 5000,
-                });
-                return;
-              }
-              actions?.pushToast?.({
-                type: "info",
-                title: "Redirecting…",
-                description: "Continue with Google to finish signing in.",
-                ttlMs: 2500,
-              });
-            }}
-          >
-            Continue with Google
           </button>
         </div>
 
