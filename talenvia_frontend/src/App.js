@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { NavLink, Navigate, Route, Routes } from "react-router-dom";
+import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import "./App.css";
 
 import { AppStateProvider, useAppState } from "./state/AppState";
@@ -14,6 +14,9 @@ import SettingsPage from "./pages/SettingsPage";
 import AboutPage from "./pages/AboutPage";
 import HowItWorksPage from "./pages/HowItWorksPage";
 import SearchResultsPage from "./pages/SearchResultsPage";
+import SignInPage from "./pages/SignInPage";
+import SignUpPage from "./pages/SignUpPage";
+import ProtectedRoute from "./components/ProtectedRoute";
 import { ensureUserRow, supabaseHealthCheck } from "./utils/supabaseHelpers";
 import { getSupabaseConfigStatus, supabase } from "./lib/supabaseClient";
 import AuthModal from "./components/AuthModal";
@@ -217,6 +220,10 @@ function Shell() {
   const { state, actions, toasts, globalSearchQuery, authUser } = useAppState();
   const unreadCount = useMemo(() => state.notifications.filter((n) => !n.read).length, [state.notifications]);
 
+  const navigate = useNavigate();
+  const location = useLocation();
+  const isAuthRoute = location.pathname === "/signin" || location.pathname === "/signup";
+
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState("signin"); // 'signin' | 'signup'
 
@@ -248,11 +255,22 @@ function Shell() {
   // - On initial load, read existing session (including one set via OAuth redirect).
   // - Subscribe to auth state changes.
   // - After sign-in, ensure `public.users` row exists (required for RLS-backed profile sync).
+  // - If user is on /signin or /signup, redirect to dashboard (or `?redirect=` target) after sign-in.
   useEffect(() => {
     let cancelled = false;
 
     const status = getSupabaseConfigStatus();
     if (!status.configured || !supabase) return undefined;
+
+    const resolveRedirectTarget = () => {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const redirect = params.get("redirect");
+        return redirect ? decodeURIComponent(redirect) : "/";
+      } catch {
+        return "/";
+      }
+    };
 
     (async () => {
       try {
@@ -282,6 +300,12 @@ function Shell() {
           ttlMs: 2200,
         });
 
+        // If currently on auth pages, take user to dashboard (or their intended redirect).
+        if (window.location.pathname === "/signin" || window.location.pathname === "/signup") {
+          const target = resolveRedirectTarget();
+          navigate(target, { replace: true });
+        }
+
         try {
           await ensureUserRow({
             name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || null,
@@ -300,6 +324,11 @@ function Shell() {
 
       if (event === "SIGNED_OUT") {
         actions.pushToast({ type: "info", title: "Signed out", description: "You have been signed out." });
+
+        // If user signs out while on protected areas, gently return to sign-in.
+        if (window.location.pathname !== "/signin" && window.location.pathname !== "/signup") {
+          navigate("/signin", { replace: true });
+        }
       }
     });
 
@@ -307,7 +336,7 @@ function Shell() {
       cancelled = true;
       sub?.subscription?.unsubscribe?.();
     };
-  }, [actions]);
+  }, [actions, navigate]);
 
   // Non-blocking Supabase check (scaffold only; does not change any features/routes/UI).
   useEffect(() => {
@@ -395,6 +424,32 @@ function Shell() {
     /** Toggles sidebar visibility without page reload; used by header hamburger and overlay. */
     setSidebarOpen((v) => !v);
   };
+
+  if (isAuthRoute) {
+    return (
+      <div className="App">
+        <ToastStack toasts={toasts} />
+        <div className="shell auth-shell">
+          <main className="main" aria-label="Authentication">
+            <Routes>
+              <Route path="/signin" element={<SignInPage />} />
+              <Route path="/signup" element={<SignUpPage />} />
+              <Route path="*" element={<Navigate to="/signin" replace />} />
+            </Routes>
+          </main>
+
+          <footer className="footer">
+            <div className="container">
+              <div className="row" style={{ justifyContent: "space-between" }}>
+                <span>© {new Date().getFullYear()} Talenvia</span>
+                <span style={{ color: "var(--muted)" }}>Secure sign-in • Supabase Auth</span>
+              </div>
+            </div>
+          </footer>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="App">
@@ -788,19 +843,79 @@ function Shell() {
 
           <main className="main" aria-label="Main content">
             <Routes>
-              <Route path="/" element={<DashboardPage />} />
-              <Route path="/profile-skills" element={<ProfileAndSkillsPage />} />
+              {/* Auth routes still exist here for direct navigation; Shell hides itself on auth paths above. */}
+              <Route path="/signin" element={<SignInPage />} />
+              <Route path="/signup" element={<SignUpPage />} />
+
+              <Route
+                path="/"
+                element={
+                  <ProtectedRoute>
+                    <DashboardPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/profile-skills"
+                element={
+                  <ProtectedRoute>
+                    <ProfileAndSkillsPage />
+                  </ProtectedRoute>
+                }
+              />
 
               {/* Backwards-compatible redirects (old sidebar/page routes) */}
               <Route path="/profile" element={<Navigate to="/profile-skills" replace />} />
               <Route path="/skills" element={<Navigate to="/profile-skills" replace />} />
 
-              <Route path="/jobs" element={<JobsPage />} />
-              <Route path="/search" element={<SearchResultsPage />} />
-              <Route path="/mock-tests" element={<MockTestsPage />} />
-              <Route path="/applications" element={<ApplicationsPage />} />
-              <Route path="/notifications" element={<NotificationsPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
+              <Route
+                path="/jobs"
+                element={
+                  <ProtectedRoute>
+                    <JobsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/search"
+                element={
+                  <ProtectedRoute>
+                    <SearchResultsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/mock-tests"
+                element={
+                  <ProtectedRoute>
+                    <MockTestsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/applications"
+                element={
+                  <ProtectedRoute>
+                    <ApplicationsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/notifications"
+                element={
+                  <ProtectedRoute>
+                    <NotificationsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/settings"
+                element={
+                  <ProtectedRoute>
+                    <SettingsPage />
+                  </ProtectedRoute>
+                }
+              />
               <Route path="/about" element={<AboutPage />} />
               <Route path="/how-it-works" element={<HowItWorksPage />} />
               <Route
