@@ -23,7 +23,7 @@ import HowItWorksPage from "./pages/HowItWorksPage";
  */
 
 function Shell() {
-  const { state, actions, toasts } = useAppState();
+  const { state, actions, toasts, globalSearchQuery } = useAppState();
   const unreadCount = useMemo(() => state.notifications.filter((n) => !n.read).length, [state.notifications]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -36,13 +36,17 @@ function Shell() {
     actions.updateSettings({ theme: state.settings.theme === "light" ? "dark" : "light" });
   };
 
+  const submitHeaderSearch = () => {
+    actions.submitGlobalSearch(globalSearchQuery);
+  };
+
   return (
     <div className="App">
       <ToastStack toasts={toasts} />
       <div className="shell">
         <header className="header">
           <div className="container header-inner">
-            <div className="row" style={{ gap: 10 }}>
+            <div className="row header-left" style={{ gap: 10 }}>
               <button
                 className="icon-btn"
                 onClick={() => setSidebarOpen((v) => !v)}
@@ -59,6 +63,39 @@ function Shell() {
                 </span>
               </a>
             </div>
+
+            <form
+              className="header-search"
+              role="search"
+              aria-label="Global search"
+              onSubmit={(e) => {
+                e.preventDefault();
+                submitHeaderSearch();
+              }}
+            >
+              <div className="search-field">
+                <span className="search-icon" aria-hidden="true">
+                  ⌕
+                </span>
+                <input
+                  className="search-input"
+                  type="search"
+                  value={globalSearchQuery}
+                  onChange={(e) => actions.setGlobalSearchQuery(e.target.value)}
+                  placeholder="Search jobs, companies, or skills"
+                  aria-label="Search jobs, companies, or skills"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      submitHeaderSearch();
+                    }
+                  }}
+                />
+                <button className="search-btn" type="button" onClick={submitHeaderSearch} aria-label="Search">
+                  Search
+                </button>
+              </div>
+            </form>
 
             <div className="header-actions">
               <NavLink className="icon-btn" to="/notifications" aria-label="Notifications">

@@ -18,6 +18,9 @@ export function AppStateProvider({ children }) {
   const [state, setState] = useState(() => loadAppState());
   const [toasts, setToasts] = useState([]);
 
+  // Global header search state (client-side; no navigation/reload required).
+  const [globalSearchQuery, setGlobalSearchQuery] = useState("");
+
   // Persist state changes
   useEffect(() => {
     saveAppState(state);
@@ -158,11 +161,37 @@ export function AppStateProvider({ children }) {
       },
 
       // PUBLIC_INTERFACE
+      setGlobalSearchQuery(query) {
+        /** Updates the global search query shown in the header search bar. */
+        setGlobalSearchQuery(query);
+      },
+
+      // PUBLIC_INTERFACE
+      submitGlobalSearch(query) {
+        /**
+         * Triggers a client-side search action for the given query.
+         * Current implementation shows a toast (no reload). Pages can optionally
+         * read globalSearchQuery and react to it in the future.
+         */
+        const q = String(query || "").trim();
+        if (!q) {
+          pushToast({ type: "info", title: "Search", description: "Type something to search." });
+          return;
+        }
+
+        // Client-side action trigger (no navigation required)
+        pushToast({ type: "info", title: "Search", description: `Searching for: ${q}` });
+      },
+
+      // PUBLIC_INTERFACE
       pushToast,
     };
   }, []);
 
-  const value = useMemo(() => ({ state, setState, actions, toasts }), [state, actions, toasts]);
+  const value = useMemo(
+    () => ({ state, setState, actions, toasts, globalSearchQuery }),
+    [state, actions, toasts, globalSearchQuery]
+  );
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
 }
