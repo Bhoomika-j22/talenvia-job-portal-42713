@@ -15,6 +15,7 @@ import AboutPage from "./pages/AboutPage";
 import HowItWorksPage from "./pages/HowItWorksPage";
 import SearchResultsPage from "./pages/SearchResultsPage";
 import { supabaseHealthCheck } from "./utils/supabaseHelpers";
+import { getSupabaseConfigStatus } from "./lib/supabaseClient";
 
 /**
  * Talenvia React Frontend
@@ -238,6 +239,18 @@ function Shell() {
     let cancelled = false;
 
     (async () => {
+      // First: if env vars are missing, surface a helpful toast once (non-blocking).
+      const status = getSupabaseConfigStatus();
+      if (!cancelled && !status.configured) {
+        actions.pushToast({
+          type: "info",
+          title: "Supabase not configured",
+          description: `Missing env: ${status.missing.join(", ")}. Cloud sync will be disabled.`,
+          ttlMs: 5000,
+        });
+        return;
+      }
+
       const res = await supabaseHealthCheck();
 
       // Only show a small toast when configured + reachable.
